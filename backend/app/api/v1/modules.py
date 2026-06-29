@@ -1,0 +1,151 @@
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_user, get_db
+from app.models.entities import (
+    AuditLog,
+    ChatSession,
+    Document,
+    KnowledgeBase,
+    User,
+    WorkspaceSetting,
+)
+from app.schemas.modules import (
+    AuditLogPublic,
+    ChatSessionCreate,
+    ChatSessionPublic,
+    DocumentCreate,
+    DocumentPublic,
+    KnowledgeBaseStatus,
+    WorkspaceSettingPublic,
+)
+from app.services.workspace_service import require_workspace_member, write_audit_log
+
+router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["workspace-modules"])
+
+
+@router.get("/documents", response_model=list[DocumentPublic])
+def list_documents(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return db.execute(
+        select(Document)
+        .where(Document.workspace_id == workspace_id)
+        .order_by(Document.created_at.desc())
+    ).scalars().all()
+
+
+@router.post(
+    "/documents",
+    response_model=DocumentPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_document_record(
+    workspace_id: str,
+    payload: DocumentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    document = Document(
+        workspace_id=workspace_id,
+        user_id=current_user.id,
+        filename=payload.filename,
+        file_type=payload.file_type,
+    )
+    db.add(document)
+    db.flush()
+    write_audit_log(
+        db,
+        action="document.created",
+        user_id=current_user.id,
+        workspace_id=workspace_id,
+        target_type="document",
+        target_id=document.id,
+        detail={"filename": document.filename},
+    )
+    db.commit()
+    db.refresh(document)
+    return document
+
+
+@router.get("/knowledge-base", response_model=KnowledgeBaseStatus)
+def get_knowledge_base(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    knowledge_base = db.execute(
+        select(KnowledgeBase).where(KnowledgeBase.workspace_id == workspace_id)
+    ).scalar_one()
+    return knowledge_base
+
+
+@router.get("/chat-sessions", response_model=list[ChatSessionPublic])
+def list_chat_sessions(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return db.execute(
+        select(ChatSession)
+        .where(ChatSession.workspace_id == workspace_id)
+        .order_by(ChatSession.created_at.desc())
+    ).scalars().all()
+
+
+@router.post(
+    "/chat-sessions",
+    response_model=ChatSessionPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_chat_session(
+    workspace_id: str,
+    payload: ChatSessionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    session = ChatSession(
+        workspace_id=workspace_id,
+        user_id=current_user.id,
+        title=payload.title,
+        mode=payload.mode,
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+
+@router.get("/settings", response_model=list[WorkspaceSettingPublic])
+def list_settings(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return db.execute(
+        select(WorkspaceSetting).where(WorkspaceSetting.workspace_id == workspace_id)
+    ).scalars().all()
+
+
+@router.get("/audit-logs", response_model=list[AuditLogPublic])
+def list_audit_logs(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return db.execute(
+        select(AuditLog)
+        .where(AuditLog.workspace_id == workspace_id)
+        .order_by(AuditLog.created_at.desc())
+        .limit(50)
+    ).scalars().all()
