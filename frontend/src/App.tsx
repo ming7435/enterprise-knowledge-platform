@@ -153,6 +153,7 @@ export default function App() {
 
   return (
     <WorkspaceShell
+      token={token}
       user={user}
       workspace={selectedWorkspace}
       onBackToWorkspaces={() => setSelectedWorkspace(null)}

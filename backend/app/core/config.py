@@ -37,6 +37,7 @@ class Settings:
         os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "120")
     )
     local_storage_root: str = os.getenv("LOCAL_STORAGE_ROOT", "storage/uploads")
+    file_storage: str = os.getenv("FILE_STORAGE", "minio")
     rerank_model_path: str = os.getenv(
         "RERANK_MODEL_PATH", r"L:\RAG_系统\models"
     )
@@ -53,6 +54,10 @@ class Settings:
 
     n8n_url: str = os.getenv("N8N_URL", "http://localhost:5678")
     minio_endpoint: str = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+    minio_access_key: str = os.getenv("MINIO_ACCESS_KEY", "")
+    minio_secret_key: str = os.getenv("MINIO_SECRET_KEY", "")
+    minio_bucket: str = os.getenv("MINIO_BUCKET", "enterprise-knowledge-platform")
+    minio_secure: bool = _env_bool("MINIO_SECURE", "false")
     neo4j_uri: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
     mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -13,10 +15,12 @@ class DocumentPublic(BaseModel):
     workspace_id: str
     filename: str
     file_type: str
+    file_path: str | None
     parse_status: str
     index_status: str
     chunk_count: int
     permission_scope: str
+    created_at: datetime
 
 
 class KnowledgeBaseStatus(BaseModel):

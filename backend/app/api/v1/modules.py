@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,9 @@ from app.schemas.modules import (
     WorkspaceSettingPublic,
 )
 from app.services.workspace_service import require_workspace_member, write_audit_log
+from app.api.deps import get_settings
+from app.core.config import Settings
+from app.services.document_service import upload_document_content
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["workspace-modules"])
 
@@ -37,6 +40,36 @@ def list_documents(
         .where(Document.workspace_id == workspace_id)
         .order_by(Document.created_at.desc())
     ).scalars().all()
+
+
+@router.post(
+    "/documents/upload",
+    response_model=DocumentPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_document(
+    workspace_id: str,
+    file: UploadFile = File(...),
+    permission_scope: str = Form(default="workspace"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    content = await file.read()
+    document = upload_document_content(
+        db,
+        settings=settings,
+        user=current_user,
+        workspace_id=workspace_id,
+        filename=file.filename or "document",
+        content_type=file.content_type,
+        content=content,
+        permission_scope=permission_scope,
+    )
+    db.commit()
+    db.refresh(document)
+    return document
 
 
 @router.post(

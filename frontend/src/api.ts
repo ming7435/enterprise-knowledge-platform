@@ -1,6 +1,8 @@
 import type {
+  DocumentRecord,
   EmailCodeLoginInput,
   EmailCodePurpose,
+  KnowledgeBaseStatus,
   LoginInput,
   RegisterInput,
   User,
@@ -21,7 +23,9 @@ async function request<T>(
   token?: string | null
 ): Promise<T> {
   const headers = new Headers(options.headers);
-  headers.set('Content-Type', 'application/json');
+  if (!(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
@@ -76,6 +80,33 @@ export const api = {
       {
         method: 'POST',
         body: JSON.stringify({ name, description })
+      },
+      token
+    );
+  },
+  documents(token: string, workspaceId: string) {
+    return request<DocumentRecord[]>(
+      `/api/v1/workspaces/${workspaceId}/documents`,
+      {},
+      token
+    );
+  },
+  knowledgeBase(token: string, workspaceId: string) {
+    return request<KnowledgeBaseStatus>(
+      `/api/v1/workspaces/${workspaceId}/knowledge-base`,
+      {},
+      token
+    );
+  },
+  uploadDocument(token: string, workspaceId: string, file: File) {
+    const formData = new FormData();
+    formData.set('file', file);
+    formData.set('permission_scope', 'workspace');
+    return request<DocumentRecord>(
+      `/api/v1/workspaces/${workspaceId}/documents/upload`,
+      {
+        method: 'POST',
+        body: formData
       },
       token
     );
