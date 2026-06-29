@@ -1,74 +1,84 @@
-# Enterprise Knowledge Platform V1 Design
+# 企业知识平台 V1 设计方案
 
-## Source And Decision
+## 来源与决定
 
-This design is based on `C:/Users/12587/Desktop/企业知识平台最终方案总结.docx`.
+本设计基于 `C:/Users/12587/Desktop/企业知识平台最终方案总结.docx`。
 
-The project will be delivered in five versions:
+项目按 5 个版本推进：
 
-1. **V1: Foundation MVP** - account entry, workspace selection, workspace isolation, base database models, and usable page/API skeleton.
-2. **V2: Documents And Knowledge Base** - document upload, parsing status, chunk records, knowledge base build/rebuild flow, and vector store integration.
-3. **V3: RAG Q&A** - normal chat, knowledge-base chat, retrieval, rerank, source snippets, page numbers, similarity scores, and chat history.
-4. **V4: Enterprise Collaboration** - members, roles, document permissions, workspace settings, audit logs, and enterprise administration.
-5. **V5: Commercial Advanced Features** - Neo4j knowledge graph, data analysis reports, tool center, enterprise notifications, MinIO storage, and private deployment hardening.
+1. **V1：基础可运行版** - 账号入口、工作区选择、`workspace_id` 隔离、基础数据库模型、可运行的页面/API 骨架。
+2. **V2：文档与知识库版** - 文档上传、解析状态、文档片段、知识库构建/重建流程、向量库接入。
+3. **V3：RAG 问答版** - 普通对话、知识库问答、检索、重排序、来源片段、页码、相似度、聊天记录。
+4. **V4：企业协作版** - 成员、角色、文档权限、工作区设置、审计日志、企业管理。
+5. **V5：商业高级版** - Neo4j 知识图谱、数据分析报告、工具中心、企业通知、MinIO 文件存储、私有化部署加固。
 
-The approved V1 technical direction is a full-stack local MVP:
+V1 采用已确认的全栈本地 MVP 方案：
 
-- Backend: FastAPI.
-- Frontend: React + Vite + TypeScript.
-- Database: PostgreSQL, started through Docker Compose.
-- ORM and migrations: SQLAlchemy 2.x + Alembic.
-- Authentication: email/password with password hashing and JWT access tokens.
-- File storage in V1: local workspace storage directory, with a later MinIO adapter in V5.
-- RAG/vector/graph/model integrations in V1: configuration fields and module boundaries only; real behavior starts in later versions.
+- 后端：FastAPI。
+- 前端：React + Vite + TypeScript。
+- 数据库：PostgreSQL，通过 Docker Compose 启动。
+- ORM 与迁移：SQLAlchemy 2.x + Alembic。
+- 认证：邮箱/密码、密码哈希、JWT 访问令牌。
+- V1 文件存储：本地工作区存储目录，V5 再接 MinIO。
+- V1 RAG/向量库/图数据库/模型集成：先保留配置字段和模块边界，真实能力从后续版本实现。
 
-## V1 Goals
+## 项目长期规则
 
-V1 must create a runnable product foundation, not a throwaway prototype. After V1, a user can register, log in, choose or create a workspace, and open personal or enterprise workspace pages. The data model must already enforce the platform's most important rule: personal workspace data and enterprise workspace data are separate through `workspace_id`.
+- 项目文档默认使用中文；技术关键字、代码标识符、命令、API 路径可以保留英文。
+- GitHub 远程仓库固定为 `https://github.com/ming7435/enterprise-knowledge-platform`。
+- 每次本地完成项目改动后，都要提交并推送到 GitHub，除非用户明确要求暂不提交。
+- 不上传隐私账号、密码、API Key、Token、证书、真实 `.env` 文件。
+- 配置示例只放 `.env.example`，真实敏感配置只放本地 `.env`。
+- 本地 Rerank 模型路径固定为 `L:\RAG_系统\models\bge-reranker-v2-m3`。
+- `models/` 是本地大模型目录，不进入 Git 仓库。
 
-V1 includes:
+## V1 目标
 
-- Register, login, logout, password hashing, and JWT authentication.
-- Login as the first user entry point.
-- Automatic personal workspace creation for every user.
-- Workspace selection page after login.
-- Enterprise workspace creation by the current user.
-- Workspace switching between personal and enterprise workspaces.
-- Core database tables that later versions can extend without replacement.
-- Basic page shell for personal and enterprise dashboards.
-- Basic pages for documents, knowledge base, chat, settings, and audit/log visibility.
-- Stub API modules for documents, knowledge bases, chat, and settings so later versions have stable locations.
+V1 要创建一个可运行的产品基础，而不是一次性原型。V1 完成后，用户可以注册、登录、选择或创建工作区，并进入个人或企业工作区页面。数据模型必须从一开始落实平台最重要的规则：个人工作区和企业工作区通过 `workspace_id` 严格隔离。
 
-V1 does not include:
+V1 包含：
 
-- Real email verification.
-- Real document parsing.
-- Real vector indexing.
-- Real RAG answer generation.
-- Rerank execution.
-- Neo4j.
-- Enterprise notifications.
-- MinIO.
-- Payment, subscription, or package limits.
+- 注册、登录、退出、密码哈希、JWT 登录态。
+- 登录作为第一入口。
+- 每个用户自动创建个人工作区。
+- 登录后进入工作区选择页。
+- 当前用户可以创建企业工作区。
+- 可在个人工作区和企业工作区之间切换。
+- 创建后续版本可继续扩展的核心数据库表。
+- 个人和企业工作区的基础页面框架。
+- 文档、知识库、问答、设置、审计/日志的基础页面。
+- 文档、知识库、问答、设置等 API 模块先建立稳定位置，供后续版本扩展。
 
-## Non-Negotiable Product Rules
+V1 不包含：
 
-The implementation must preserve these rules from the source document:
+- 真实邮箱验证码。
+- 真实文档解析。
+- 真实向量索引。
+- 真实 RAG 回答生成。
+- Rerank 实际执行。
+- Neo4j。
+- 企业通知。
+- MinIO。
+- 付费页、套餐限制、商业计费。
 
-- Registration and login are the first entry point.
-- Login success sends the user to workspace selection.
-- The system supports personal workspaces and enterprise workspaces.
-- Personal and enterprise workspaces do not share business data.
-- No workspace sync.
-- No workspace copy.
-- No cross-workspace import.
-- Every business record that belongs to a workspace must include `workspace_id`.
-- Reads and writes must check `user_id`, `workspace_id`, membership, role, and permission where relevant.
-- Enterprise workspace is the main commercial direction, even though paid features are out of scope for V1.
+## 不可违背的产品规则
 
-## Architecture
+实现必须保留源文档中的这些原则：
 
-The repository will be a monorepo with independent backend, frontend, infrastructure, and documentation areas:
+- 注册登录页是第一入口。
+- 登录成功后进入工作区选择页。
+- 系统同时支持个人工作区和企业工作区。
+- 个人工作区和企业工作区业务数据完全独立。
+- 不做工作区同步。
+- 不做工作区复制。
+- 不做跨工作区导入。
+- 所有属于工作区的业务记录都必须包含 `workspace_id`。
+- 读写数据时必须根据场景校验 `user_id`、`workspace_id`、成员身份、角色和权限。
+- 企业工作区是后期主要商业化方向，但 V1 不做付费能力。
+
+## 架构设计
+
+仓库采用单仓库结构，后端、前端、基础设施和文档彼此独立：
 
 ```text
 backend/
@@ -93,113 +103,113 @@ docs/
   superpowers/
 ```
 
-The backend owns all authorization, workspace isolation, persistence, and audit records. The frontend never decides whether a user may access a workspace; it only sends the selected workspace id to backend endpoints and renders the response.
+后端负责所有鉴权、工作区隔离、持久化和审计记录。前端不判断用户是否有权访问某个工作区，只负责把选中的工作区 id 发送给后端并渲染后端返回结果。
 
-The frontend will be an authenticated single-page app:
+前端是一个需要认证的单页应用：
 
-- Public routes: login and register.
-- Protected route: workspace selection.
-- Workspace routes: personal workspace and enterprise workspace layouts.
-- Shared feature routes: dashboard, documents, knowledge base, chat, settings.
-- Enterprise-only route shell: members and audit logs.
+- 公开路由：登录、注册。
+- 受保护路由：工作区选择。
+- 工作区路由：个人工作区布局、企业工作区布局。
+- 共享功能路由：首页、文档、知识库、问答、设置。
+- 企业专属路由外壳：成员、审计日志。
 
-The backend will expose a versioned API under `/api/v1`. Each feature area gets a focused router and service:
+后端 API 统一挂在 `/api/v1` 下，每个功能域都有独立 router 和 service：
 
-- `auth`: registration, login, current user.
-- `workspaces`: list workspaces, create enterprise workspace, select/access workspace.
-- `documents`: V1 list/create stub records.
-- `knowledge_bases`: V1 status/config stub records.
-- `chat`: V1 session/message stub records.
-- `settings`: workspace settings.
-- `audit_logs`: basic operation log query.
+- `auth`：注册、登录、当前用户。
+- `workspaces`：工作区列表、创建企业工作区、访问工作区。
+- `documents`：V1 文档记录的基础创建与列表。
+- `knowledge_bases`：V1 知识库状态与配置记录。
+- `chat`：V1 会话与消息记录。
+- `settings`：工作区设置。
+- `audit_logs`：基础操作日志查询。
 
-## Data Model
+## 数据模型
 
-V1 creates the core tables from the final方案, scoped to the MVP:
+V1 创建源方案中的核心表，并限定在 MVP 范围内：
 
-- `users`: account identity, email, username, password hash, status, login timestamps.
-- `workspaces`: personal or enterprise workspace, owner, name, description, status.
-- `workspace_members`: user membership in each workspace, role, department, status.
-- `documents`: workspace-scoped file record and lifecycle status fields.
-- `document_chunks`: workspace-scoped source text chunks for future RAG.
-- `knowledge_bases`: workspace knowledge base status.
-- `vector_indexes`: vector store settings and future index metadata.
-- `chat_sessions`: workspace chat sessions.
-- `chat_messages`: workspace chat messages, sources, agent trace, model name.
-- `workspace_settings`: workspace-level model, vector, storage, and integration settings.
-- `audit_logs`: workspace-scoped user actions and errors.
+- `users`：账号身份、邮箱、用户名、密码哈希、状态、登录时间。
+- `workspaces`：个人或企业工作区、所有者、名称、描述、状态。
+- `workspace_members`：工作区成员、角色、部门、状态。
+- `documents`：按工作区隔离的文件记录和生命周期状态。
+- `document_chunks`：按工作区隔离的来源片段，为后续 RAG 做准备。
+- `knowledge_bases`：工作区知识库状态。
+- `vector_indexes`：向量库配置和未来索引元数据。
+- `chat_sessions`：工作区聊天会话。
+- `chat_messages`：工作区聊天消息、来源、Agent trace、模型名称。
+- `workspace_settings`：工作区级模型、向量库、存储和集成配置。
+- `audit_logs`：按工作区隔离的用户行为和错误日志。
 
-V1 role values:
+V1 角色值：
 
-- `owner`: full workspace control.
-- `admin`: enterprise administration role reserved for V4.
-- `manager`: enterprise team management role reserved for V4.
-- `user`: normal workspace use.
-- `viewer`: read-only role reserved for V4.
+- `owner`：工作区完全控制权限。
+- `admin`：为 V4 企业管理预留。
+- `manager`：为 V4 企业团队管理预留。
+- `user`：普通使用者。
+- `viewer`：为 V4 只读权限预留。
 
-V1 permission enforcement is intentionally small:
+V1 权限控制保持克制：
 
-- The workspace owner can create and access their workspace.
-- A member can access workspaces where `workspace_members.status = active`.
-- Enterprise creation makes the current user the `owner`.
-- Personal workspace is created automatically and owned by the user.
+- 工作区所有者可以创建和访问自己的工作区。
+- 用户只能访问 `workspace_members.status = active` 的工作区。
+- 创建企业工作区时，当前用户成为 `owner`。
+- 注册后自动创建个人工作区，并由该用户拥有。
 
-Full role-permission tables can be introduced in V4 once enterprise permissions are implemented. V1 should not overbuild permission rules before there are protected enterprise workflows.
+完整的角色权限表等到 V4 企业协作版再引入。V1 不提前堆复杂权限规则。
 
-## Workspace Isolation
+## 工作区隔离
 
-Backend services must use a workspace-aware access pattern:
+后端服务必须使用工作区感知的访问流程：
 
-1. Authenticate the request and resolve the current user.
-2. Resolve the target `workspace_id`.
-3. Verify active membership before reading or writing workspace data.
-4. Include `workspace_id` in every query for workspace-scoped tables.
-5. Write an audit log for important actions, including login, workspace creation, document stub creation, setting changes, and errors.
+1. 认证请求并解析当前用户。
+2. 解析目标 `workspace_id`。
+3. 读写工作区数据前验证用户是 active 成员。
+4. 对所有工作区业务表查询都带上 `workspace_id`。
+5. 对重要动作写入审计日志，包括登录、创建工作区、创建文档记录、修改设置和错误。
 
-This rule applies even to V1 stub modules. The goal is to make unsafe cross-workspace queries feel unnatural in the codebase.
+这个规则也适用于 V1 的基础模块。目标是让代码结构天然避免不安全的跨工作区查询。
 
-## Frontend Experience
+## 前端体验
 
-V1 should feel like a practical internal platform, not a marketing landing page.
+V1 应该像一个实用的企业内部平台，不做营销落地页。
 
-The first screen is the login page. After login, the user sees a workspace selection page with:
+第一个屏幕是登录页。登录后用户看到工作区选择页，包含：
 
-- Personal workspace card.
-- Enterprise workspace list.
-- Create enterprise workspace action.
-- Clear labels for personal vs enterprise context.
+- 个人工作区卡片。
+- 企业工作区列表。
+- 创建企业工作区入口。
+- 清晰的个人/企业上下文标识。
 
-Inside a workspace, the layout uses a left navigation shell with compact, work-focused pages:
+进入工作区后，使用左侧导航的工作台布局：
 
-- Dashboard.
-- Documents.
-- Knowledge Base.
-- Chat.
-- Settings.
-- Members and Audit Logs for enterprise workspace, visible as V1 shells.
+- 首页。
+- 文档。
+- 知识库。
+- 问答。
+- 设置。
+- 企业工作区可见成员与审计日志页面外壳。
 
-The UI should avoid decorative landing-page sections. It should prioritize predictable navigation, dense but readable information, and clear workspace context.
+界面风格应偏安静、实用、易扫描，避免装饰性过强的首页设计。
 
-## Error Handling
+## 错误处理
 
-Backend errors:
+后端错误：
 
-- Invalid login returns `401`.
-- Missing token returns `401`.
-- Workspace not found or inactive membership returns `403` unless revealing existence would be useful for the current user.
-- Invalid input returns `422` through FastAPI/Pydantic validation.
-- Unexpected server errors are logged and return a generic `500`.
+- 登录失败返回 `401`。
+- 缺少 token 返回 `401`。
+- 工作区不存在或用户不是 active 成员时返回 `403`。
+- 输入不合法通过 FastAPI/Pydantic 返回 `422`。
+- 意外服务端错误写入日志并返回通用 `500`。
 
-Frontend errors:
+前端错误：
 
-- Login and registration forms show field-level validation where possible.
-- API authorization failures return the user to login.
-- Workspace access failures return to workspace selection with a plain error message.
-- Stub modules show empty states, not fake production data.
+- 登录和注册表单尽量展示字段级校验。
+- API 鉴权失败后回到登录页。
+- 工作区访问失败后回到工作区选择页，并显示清晰错误。
+- 基础模块显示空状态，不填充伪造业务数据。
 
-## Configuration
+## 配置
 
-V1 will include `.env.example` values for the final方案's recommended configuration while only using the values needed for the foundation:
+V1 会提供 `.env.example`，包含源方案推荐配置，但只实际使用基础版需要的字段：
 
 ```text
 APP_ENV=local
@@ -229,85 +239,85 @@ ALLOW_WORKSPACE_COPY=false
 ALLOW_CROSS_WORKSPACE_IMPORT=false
 ```
 
-## Testing Strategy
+## 测试策略
 
-Backend V1 tests:
+后端 V1 测试：
 
-- Register creates a user and personal workspace.
-- Duplicate email registration is rejected.
-- Login returns a JWT.
-- Current user endpoint works with valid JWT.
-- Workspace list only includes active memberships for the current user.
-- Enterprise workspace creation creates workspace and owner membership.
-- Workspace-scoped queries include membership checks.
-- A user cannot access another user's personal workspace.
+- 注册会创建用户和个人工作区。
+- 重复邮箱注册会被拒绝。
+- 登录返回 JWT。
+- 当前用户接口在有效 JWT 下可用。
+- 工作区列表只返回当前用户的 active 成员关系。
+- 创建企业工作区会同时创建 owner 成员关系。
+- 工作区范围查询必须验证成员关系。
+- 用户不能访问其他用户的个人工作区。
 
-Frontend V1 tests:
+前端 V1 测试：
 
-- Login form validates required fields.
-- Workspace selection renders personal and enterprise workspaces from API data.
-- Workspace routes require authentication.
-- Workspace context is displayed in the app shell.
+- 登录表单校验必填字段。
+- 工作区选择页能渲染 API 返回的个人和企业工作区。
+- 工作区路由需要认证。
+- 应用框架能显示当前工作区上下文。
 
-Manual verification:
+手工验证：
 
-- Start PostgreSQL through Docker Compose.
-- Run backend migrations.
-- Start backend.
-- Start frontend.
-- Register a user.
-- Confirm personal workspace exists.
-- Create an enterprise workspace.
-- Switch between personal and enterprise workspace.
-- Confirm shell pages load under both workspace contexts.
+- 通过 Docker Compose 启动 PostgreSQL。
+- 运行后端迁移。
+- 启动后端。
+- 启动前端。
+- 注册一个用户。
+- 确认个人工作区已创建。
+- 创建一个企业工作区。
+- 在个人和企业工作区之间切换。
+- 确认两个工作区上下文下的基础页面都能打开。
 
-## Version Roadmap
+## 版本路线图
 
-V2 will implement document upload and knowledge base creation:
+V2 实现文档上传和知识库创建：
 
-- File upload and local storage.
-- Document records with parse/index status.
-- Text extraction pipeline stubs for PDF, Word, TXT, Markdown, Excel, CSV, JSON, and images.
-- Chunk creation.
-- FAISS or Chroma integration.
+- 文件上传和本地存储。
+- 带解析/入库状态的文档记录。
+- PDF、Word、TXT、Markdown、Excel、CSV、JSON、图片的文本抽取流程基础模块。
+- 文档切片。
+- FAISS 或 Chroma 接入。
 
-V3 will implement RAG Q&A:
+V3 实现 RAG 问答：
 
-- Normal chat and RAG chat.
-- Embedding through `bge-m3:567m`.
-- Top-k retrieval.
-- Local rerank through `L:\RAG_系统\models\bge-reranker-v2-m3`.
-- DeepSeek answer generation.
-- Sources, snippets, page number, similarity score, and agent trace.
+- 普通对话和 RAG 对话。
+- 使用 `bge-m3:567m` 做 Embedding。
+- Top-k 检索。
+- 使用本地路径 `L:\RAG_系统\models\bge-reranker-v2-m3` 做 Rerank。
+- 使用 DeepSeek 生成答案。
+- 返回来源、片段、页码、相似度和 Agent trace。
 
-V4 will implement enterprise collaboration:
+V4 实现企业协作：
 
-- Role-permission tables.
-- Member invitation/removal.
-- Document permissions.
-- Workspace audit log expansion.
-- Enterprise settings.
+- 角色权限表。
+- 成员邀请和移除。
+- 文档权限。
+- 扩展工作区审计日志。
+- 企业设置。
 
-V5 will implement advanced commercial features:
+V5 实现高级商业功能：
 
-- Neo4j knowledge graph.
-- Data analysis and report generation.
-- Tool center.
-- Enterprise WeChat, Feishu, DingTalk, and Webhook integrations.
-- MinIO storage.
-- Private deployment hardening.
+- Neo4j 知识图谱。
+- 数据分析和报告生成。
+- 工具中心。
+- 企业微信、飞书、钉钉、Webhook 集成。
+- MinIO 文件存储。
+- 私有化部署加固。
 
-## Acceptance Criteria
+## 验收标准
 
-V1 is complete when:
+V1 完成标准：
 
-- The project starts locally with documented commands.
-- Backend and frontend run at predictable local ports.
-- PostgreSQL schema is created through migrations.
-- User registration, login, and current-user retrieval work.
-- A personal workspace is automatically created for every new user.
-- An enterprise workspace can be created from the workspace selection flow.
-- Users cannot access workspaces where they are not active members.
-- Core workspace-scoped models include `workspace_id`.
-- The UI exposes the agreed V1 pages and clearly shows the current workspace.
-- Tests cover authentication, workspace creation, and workspace isolation.
+- 项目可以通过文档命令在本地启动。
+- 后端和前端运行在明确的本地端口。
+- PostgreSQL schema 通过迁移创建。
+- 用户注册、登录、获取当前用户可用。
+- 每个新用户会自动创建个人工作区。
+- 用户可以从工作区选择流程创建企业工作区。
+- 用户不能访问自己不是 active 成员的工作区。
+- 核心工作区业务模型包含 `workspace_id`。
+- UI 暴露约定的 V1 页面，并清晰显示当前工作区。
+- 测试覆盖认证、工作区创建和工作区隔离。
