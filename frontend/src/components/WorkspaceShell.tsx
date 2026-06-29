@@ -7,6 +7,7 @@ import {
   Home,
   LogOut,
   RefreshCw,
+  Search,
   Settings,
   ShieldCheck,
   Upload,
@@ -16,7 +17,13 @@ import {
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
-import type { DocumentRecord, KnowledgeBaseStatus, User, Workspace } from '../types';
+import type {
+  DocumentRecord,
+  KnowledgeBaseStatus,
+  KnowledgeChunk,
+  User,
+  Workspace
+} from '../types';
 
 interface WorkspaceShellProps {
   token: string;
@@ -58,9 +65,13 @@ export function WorkspaceShell({
   const [activePage, setActivePage] = useState<PageKey>('dashboard');
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus | null>(null);
+  const [knowledgeChunks, setKnowledgeChunks] = useState<KnowledgeChunk[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<KnowledgeChunk[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [moduleLoading, setModuleLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [moduleError, setModuleError] = useState<string | null>(null);
 
   const navItems =
@@ -72,6 +83,9 @@ export function WorkspaceShell({
   useEffect(() => {
     setDocuments([]);
     setKnowledgeBase(null);
+    setKnowledgeChunks([]);
+    setSearchQuery('');
+    setSearchResults([]);
     setSelectedFile(null);
     setModuleError(null);
     setActivePage('dashboard');
@@ -87,12 +101,14 @@ export function WorkspaceShell({
     try {
       setModuleLoading(true);
       setModuleError(null);
-      const [nextDocuments, nextKnowledgeBase] = await Promise.all([
+      const [nextDocuments, nextKnowledgeBase, nextChunks] = await Promise.all([
         api.documents(token, workspace.id),
-        api.knowledgeBase(token, workspace.id)
+        api.knowledgeBase(token, workspace.id),
+        api.knowledgeChunks(token, workspace.id, 8)
       ]);
       setDocuments(nextDocuments);
       setKnowledgeBase(nextKnowledgeBase);
+      setKnowledgeChunks(nextChunks);
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '模块数据加载失败');
     } finally {
@@ -117,6 +133,29 @@ export function WorkspaceShell({
     } finally {
       setUploading(false);
     }
+  }
+
+  async function handleSearch() {
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchResults([]);
+      return;
+    }
+    try {
+      setSearching(true);
+      setModuleError(null);
+      const results = await api.searchKnowledge(token, workspace.id, query);
+      setSearchResults(results);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '知识库检索失败');
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function handleClearSearch() {
+    setSearchQuery('');
+    setSearchResults([]);
   }
 
   return (
@@ -183,8 +222,15 @@ export function WorkspaceShell({
             currentNavLabel={currentNav.label}
             knowledgeBase={knowledgeBase}
             documents={documents}
+            chunks={knowledgeChunks}
+            searchQuery={searchQuery}
+            searchResults={searchResults}
             loading={moduleLoading}
+            searching={searching}
             error={moduleError}
+            onSearchQueryChange={setSearchQuery}
+            onSearch={handleSearch}
+            onClearSearch={handleClearSearch}
             onRefresh={loadWorkspaceModules}
           />
         ) : (
@@ -273,6 +319,7 @@ function DocumentsPanel({
           <span>类型</span>
           <span>解析</span>
           <span>入库</span>
+          <span>片段</span>
           <span>上传时间</span>
         </div>
         {documents.length === 0 ? (
@@ -284,6 +331,7 @@ function DocumentsPanel({
               <span>{document.file_type}</span>
               <StatusBadge value={document.parse_status} kind="parse" />
               <StatusBadge value={document.index_status} kind="index" />
+              <span>{document.chunk_count}</span>
               <span>{formatDate(document.created_at)}</span>
             </div>
           ))
@@ -297,24 +345,41 @@ function KnowledgePanel({
   currentNavLabel,
   knowledgeBase,
   documents,
+  chunks,
+  searchQuery,
+  searchResults,
   loading,
+  searching,
   error,
+  onSearchQueryChange,
+  onSearch,
+  onClearSearch,
   onRefresh
 }: {
   currentNavLabel: string;
   knowledgeBase: KnowledgeBaseStatus | null;
   documents: DocumentRecord[];
+  chunks: KnowledgeChunk[];
+  searchQuery: string;
+  searchResults: KnowledgeChunk[];
   loading: boolean;
+  searching: boolean;
   error: string | null;
+  onSearchQueryChange: (value: string) => void;
+  onSearch: () => void;
+  onClearSearch: () => void;
   onRefresh: () => void;
 }) {
+  const hasSearchQuery = searchQuery.trim().length > 0;
+  const visibleChunks = hasSearchQuery ? searchResults : chunks;
+
   return (
     <section className="content-panel module-panel">
       <div className="panel-heading">
         <div>
           <p className="eyebrow">{currentNavLabel}</p>
           <h2>知识库状态</h2>
-          <p>V2.1 展示文档级状态，解析、切片和 Milvus 入库会在后续阶段接入。</p>
+          <p>文档上传后自动解析为知识片段，当前版本提供工作区内关键词检索预览。</p>
         </div>
         <button className="ghost-button" onClick={onRefresh} disabled={loading}>
           <RefreshCw size={18} aria-hidden="true" />
@@ -342,6 +407,39 @@ function KnowledgePanel({
         />
       </div>
 
+      <form
+        className="knowledge-search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onSearch();
+        }}
+      >
+        <div className="input-row">
+          <Search size={18} aria-hidden="true" />
+          <input
+            value={searchQuery}
+            onChange={(event) => onSearchQueryChange(event.target.value)}
+            placeholder="输入关键词检索当前工作区知识片段"
+          />
+        </div>
+        <button className="primary-action compact-action" type="submit" disabled={searching}>
+          <Search size={18} aria-hidden="true" />
+          {searching ? '检索中' : '检索'}
+        </button>
+        {hasSearchQuery && (
+          <button className="ghost-button" type="button" onClick={onClearSearch}>
+            清空
+          </button>
+        )}
+      </form>
+
+      <KnowledgeChunkList
+        title={hasSearchQuery ? '检索结果' : '最近知识片段'}
+        chunks={visibleChunks}
+        showScore={hasSearchQuery}
+        emptyText={hasSearchQuery ? '当前关键词没有命中片段。' : '上传并解析文档后这里会显示知识片段。'}
+      />
+
       <div className="document-table compact-table">
         <div className="table-head">
           <span>最近文档</span>
@@ -361,6 +459,41 @@ function KnowledgePanel({
         )}
       </div>
     </section>
+  );
+}
+
+function KnowledgeChunkList({
+  title,
+  chunks,
+  showScore,
+  emptyText
+}: {
+  title: string;
+  chunks: KnowledgeChunk[];
+  showScore: boolean;
+  emptyText: string;
+}) {
+  return (
+    <div className="chunk-list">
+      <div className="chunk-list-head">
+        <h3>{title}</h3>
+        <span>{chunks.length} 条</span>
+      </div>
+      {chunks.length === 0 ? (
+        <div className="empty-row">{emptyText}</div>
+      ) : (
+        chunks.map((chunk) => (
+          <article className="chunk-item" key={chunk.id}>
+            <div>
+              <strong>{chunk.filename}</strong>
+              <span>片段 #{chunk.chunk_index + 1}</span>
+              {showScore && <span>相关度 {chunk.score.toFixed(2)}</span>}
+            </div>
+            <p>{chunk.content}</p>
+          </article>
+        ))
+      )}
+    </div>
   );
 }
 
@@ -429,6 +562,7 @@ function statusText(value: string, kind: StatusBadgeKind = 'default') {
     default: {
       empty: '空',
       documents_uploaded: '已上传文档',
+      ready: '可检索',
       uploaded: '已上传',
       pending: '待处理',
       parsing: '解析中',

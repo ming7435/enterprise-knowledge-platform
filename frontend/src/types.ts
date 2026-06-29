@@ -34,6 +34,15 @@ export interface KnowledgeBaseStatus {
   chunk_count: number;
 }
 
+export interface KnowledgeChunk {
+  id: string;
+  document_id: string;
+  filename: string;
+  chunk_index: number;
+  content: string;
+  score: number;
+}
+
 export interface LoginInput {
   email: string;
   password: string;

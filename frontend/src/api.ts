@@ -2,6 +2,7 @@ import type {
   DocumentRecord,
   EmailCodeLoginInput,
   EmailCodePurpose,
+  KnowledgeChunk,
   KnowledgeBaseStatus,
   LoginInput,
   RegisterInput,
@@ -94,6 +95,24 @@ export const api = {
   knowledgeBase(token: string, workspaceId: string) {
     return request<KnowledgeBaseStatus>(
       `/api/v1/workspaces/${workspaceId}/knowledge-base`,
+      {},
+      token
+    );
+  },
+  knowledgeChunks(token: string, workspaceId: string, limit = 10) {
+    return request<KnowledgeChunk[]>(
+      `/api/v1/workspaces/${workspaceId}/knowledge-base/chunks?limit=${limit}`,
+      {},
+      token
+    );
+  },
+  searchKnowledge(token: string, workspaceId: string, query: string, limit = 10) {
+    const params = new URLSearchParams({
+      query,
+      limit: String(limit)
+    });
+    return request<KnowledgeChunk[]>(
+      `/api/v1/workspaces/${workspaceId}/knowledge-base/search?${params.toString()}`,
       {},
       token
     );

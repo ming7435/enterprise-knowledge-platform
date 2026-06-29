@@ -32,6 +32,24 @@ class KnowledgeBaseStatus(BaseModel):
     chunk_count: int
 
 
+class DocumentChunkPublic(BaseModel):
+    id: str
+    document_id: str
+    filename: str
+    chunk_index: int
+    content: str
+    score: float = 0
+
+
+class KnowledgeSearchResult(BaseModel):
+    id: str
+    document_id: str
+    filename: str
+    chunk_index: int
+    content: str
+    score: float
+
+
 class ChatSessionCreate(BaseModel):
     title: str = Field(default="新会话", max_length=160)
     mode: str = Field(default="normal", max_length=40)
