@@ -67,6 +67,23 @@ Copy-Item .env.example .env
 postgresql+psycopg://rag_user:rag_password@localhost:5432/rag_platform
 ```
 
+邮箱验证码需要在本地 `.env` 填写 SMTP 配置。QQ 邮箱使用授权码，不要填写 QQ 登录密码：
+
+```text
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_USERNAME=你的邮箱
+SMTP_PASSWORD=你的本地 SMTP 授权码
+SMTP_FROM_EMAIL=你的邮箱
+SMTP_FROM_NAME=企业知识平台
+SMTP_USE_SSL=true
+SMTP_USE_TLS=false
+EMAIL_CODE_EXPIRE_MINUTES=10
+EMAIL_CODE_RESEND_SECONDS=60
+```
+
+n8n、MinIO、Neo4j、MySQL、Redis、Milvus、Attu、etcd 等本地知识库相关配置也统一放在 `.env`，仓库只提交 `.env.example` 占位模板。
+
 ## 启动 PostgreSQL
 
 如需使用 PostgreSQL：

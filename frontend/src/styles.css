@@ -88,10 +88,19 @@ button {
   margin-bottom: 24px;
 }
 
+.auth-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
 .auth-tabs button,
+.auth-methods button,
 .ghost-button,
 .sidebar-nav button,
-.workspace-card button {
+.workspace-card button,
+.secondary-action {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #fff;
@@ -100,10 +109,19 @@ button {
 }
 
 .auth-tabs button.active,
+.auth-methods button.active,
 .sidebar-nav button.active {
   border-color: #0f766e;
   background: #ecfdf5;
   color: #0f766e;
+}
+
+.auth-methods button,
+.secondary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 label {
@@ -121,6 +139,12 @@ label {
   border-radius: 8px;
   padding: 0 12px;
   background: #fff;
+}
+
+.code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  gap: 10px;
 }
 
 input,
@@ -146,6 +170,10 @@ small,
   color: #b42318;
 }
 
+.form-success {
+  color: #0f766e;
+}
+
 .primary-action,
 .workspace-card button {
   display: inline-flex;
@@ -163,6 +191,11 @@ small,
 
 .primary-action {
   width: 100%;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .workspace-topbar,
@@ -341,6 +374,10 @@ p {
 
   .workspace-card {
     grid-template-columns: 48px 1fr;
+  }
+
+  .code-row {
+    grid-template-columns: 1fr;
   }
 
   .workspace-card button {

@@ -19,6 +19,14 @@ export interface LoginInput {
   password: string;
 }
 
+export interface EmailCodeLoginInput {
+  email: string;
+  verification_code: string;
+}
+
 export interface RegisterInput extends LoginInput {
   username: string;
+  verification_code: string;
 }
+
+export type EmailCodePurpose = 'login' | 'register';

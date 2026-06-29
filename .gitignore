@@ -16,9 +16,9 @@ credentials.*
 *.crt
 
 # 本地大模型与上传文件
-models/
-storage/
-uploads/
+/models/
+/storage/
+/uploads/
 
 # Python
 __pycache__/

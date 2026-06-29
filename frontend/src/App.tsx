@@ -4,7 +4,14 @@ import { api } from './api';
 import { AuthForms } from './components/AuthForms';
 import { WorkspaceSelection } from './components/WorkspaceSelection';
 import { WorkspaceShell } from './components/WorkspaceShell';
-import type { LoginInput, RegisterInput, User, Workspace } from './types';
+import type {
+  EmailCodeLoginInput,
+  EmailCodePurpose,
+  LoginInput,
+  RegisterInput,
+  User,
+  Workspace
+} from './types';
 
 const TOKEN_KEY = 'ekp_token';
 
@@ -36,7 +43,7 @@ export default function App() {
       setWorkspaces(nextWorkspaces);
     } catch (err) {
       handleLogout();
-      setError(err instanceof Error ? err.message : '登录状态失效');
+      setError(null);
     } finally {
       setLoading(false);
     }
@@ -55,6 +62,27 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleEmailCodeLogin(input: EmailCodeLoginInput) {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.emailCodeLogin(input);
+      localStorage.setItem(TOKEN_KEY, response.access_token);
+      setToken(response.access_token);
+      await loadSession(response.access_token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '验证码登录失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSendEmailCode(email: string, purpose: EmailCodePurpose) {
+    setError(null);
+    const response = await api.sendEmailCode(email, purpose);
+    return response.message;
   }
 
   async function handleRegister(input: RegisterInput) {
@@ -102,7 +130,9 @@ export default function App() {
         error={error}
         onModeChange={setMode}
         onLogin={handleLogin}
+        onEmailCodeLogin={handleEmailCodeLogin}
         onRegister={handleRegister}
+        onSendEmailCode={handleSendEmailCode}
       />
     );
   }

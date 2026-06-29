@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.models.entities import utc_now
 from app.core.security import hash_password, verify_password
 from app.models.entities import User
+from app.services.email_verification_service import EmailVerificationService
 from app.services.workspace_service import create_workspace_with_owner, write_audit_log
 
 
@@ -23,6 +24,8 @@ def register_user(
     email: str,
     username: str,
     password: str,
+    verification_code: str | None = None,
+    verification_service: EmailVerificationService | None = None,
 ) -> tuple[User, object]:
     normalized_email = email.lower()
     existing = db.execute(
@@ -33,6 +36,25 @@ def register_user(
             status_code=status.HTTP_409_CONFLICT,
             detail="邮箱已注册",
         )
+
+    if verification_service is not None:
+        if not verification_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="请输入邮箱验证码",
+            )
+        try:
+            verification_service.consume_code(
+                db,
+                email=normalized_email,
+                code=verification_code,
+                purpose="register",
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
 
     user = User(
         email=normalized_email,
@@ -77,6 +99,46 @@ def authenticate_user(db: Session, *, email: str, password: str) -> User:
     write_audit_log(
         db,
         action="auth.login",
+        user_id=user.id,
+        target_type="user",
+        target_id=user.id,
+    )
+    db.commit()
+    return user
+
+
+def authenticate_user_by_email_code(
+    db: Session,
+    *,
+    email: str,
+    verification_code: str,
+    verification_service: EmailVerificationService,
+) -> User:
+    normalized_email = email.lower()
+    user = db.execute(
+        select(User).where(User.email == normalized_email, User.status == "active")
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="邮箱未注册，请先注册",
+        )
+    try:
+        verification_service.consume_code(
+            db,
+            email=normalized_email,
+            code=verification_code,
+            purpose="login",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    user.last_login_at = utc_now()
+    write_audit_log(
+        db,
+        action="auth.email_code_login",
         user_id=user.id,
         target_type="user",
         target_id=user.id,
