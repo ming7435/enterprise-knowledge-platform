@@ -12,7 +12,7 @@ class Settings:
     )
     local_storage_root: str = os.getenv("LOCAL_STORAGE_ROOT", "storage/uploads")
     rerank_model_path: str = os.getenv(
-        "RERANK_MODEL_PATH", r"L:\RAG_系统\models\bge-reranker-v2-m3"
+        "RERANK_MODEL_PATH", r"L:\RAG_系统\models"
     )
 
 

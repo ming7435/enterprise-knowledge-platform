@@ -24,7 +24,7 @@
 
 ## 本地模型
 
-- Rerank 模型固定路径：`L:\RAG_系统\models\bge-reranker-v2-m3`。
+- Rerank 模型固定路径：`L:\RAG_系统\models`。
 - 该路径通过环境变量 `RERANK_MODEL_PATH` 配置。
 - `models/` 是本地大模型目录，不上传 GitHub。
 
