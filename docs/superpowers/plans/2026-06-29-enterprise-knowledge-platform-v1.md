@@ -154,7 +154,7 @@ Expected: PASS。
 
 - [ ] **Step 1: 写环境示例**
 
-`.env.example` 使用示例密钥，不包含真实账号密码；包含 `RERANK_MODEL_PATH=L:\RAG_系统\models\bge-reranker-v2-m3`。
+`.env.example` 使用示例密钥，不包含真实账号密码；包含 `RERANK_MODEL_PATH=L:\RAG_系统\models`。
 
 - [ ] **Step 2: 写 Docker Compose**
 

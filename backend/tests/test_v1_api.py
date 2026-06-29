@@ -6,12 +6,18 @@ from app.core.config import Settings
 from app.main import create_app
 
 
+def test_default_rerank_model_path_points_to_models_root():
+    settings = Settings()
+
+    assert settings.rerank_model_path == r"L:\RAG_系统\models"
+
+
 def make_client(tmp_path: Path) -> TestClient:
     settings = Settings(
         database_url=f"sqlite:///{tmp_path / 'v1_test.db'}",
         jwt_secret_key="test-secret",
         local_storage_root=str(tmp_path / "uploads"),
-        rerank_model_path=r"L:\RAG_系统\models\bge-reranker-v2-m3",
+        rerank_model_path=r"L:\RAG_系统\models",
     )
     app = create_app(settings)
     return TestClient(app)

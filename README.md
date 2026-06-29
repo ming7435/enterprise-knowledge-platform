@@ -18,7 +18,7 @@
 Rerank 模型路径固定为：
 
 ```text
-L:\RAG_系统\models\bge-reranker-v2-m3
+L:\RAG_系统\models
 ```
 
 该目录是本地模型目录，已通过 `.gitignore` 排除，不会上传 GitHub。

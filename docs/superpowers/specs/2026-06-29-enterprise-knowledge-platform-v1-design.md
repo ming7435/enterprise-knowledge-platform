@@ -29,7 +29,7 @@ V1 采用已确认的全栈本地 MVP 方案：
 - 每次本地完成项目改动后，都要提交并推送到 GitHub，除非用户明确要求暂不提交。
 - 不上传隐私账号、密码、API Key、Token、证书、真实 `.env` 文件。
 - 配置示例只放 `.env.example`，真实敏感配置只放本地 `.env`。
-- 本地 Rerank 模型路径固定为 `L:\RAG_系统\models\bge-reranker-v2-m3`。
+- 本地 Rerank 模型路径固定为 `L:\RAG_系统\models`。
 - `models/` 是本地大模型目录，不进入 Git 仓库。
 
 ## V1 目标
@@ -226,7 +226,7 @@ LLM_MODEL=deepseek-v4-flash
 VISION_MODEL=qwen3-vl:8b
 EMBEDDING_MODEL=bge-m3:567m
 RERANK_ENABLED=true
-RERANK_MODEL_PATH=L:\RAG_系统\models\bge-reranker-v2-m3
+RERANK_MODEL_PATH=L:\RAG_系统\models
 
 RELATIONAL_DB=postgresql
 VECTOR_STORE=faiss
@@ -286,7 +286,7 @@ V3 实现 RAG 问答：
 - 普通对话和 RAG 对话。
 - 使用 `bge-m3:567m` 做 Embedding。
 - Top-k 检索。
-- 使用本地路径 `L:\RAG_系统\models\bge-reranker-v2-m3` 做 Rerank。
+- 使用本地路径 `L:\RAG_系统\models` 做 Rerank。
 - 使用 DeepSeek 生成答案。
 - 返回来源、片段、页码、相似度和 Agent trace。
 
