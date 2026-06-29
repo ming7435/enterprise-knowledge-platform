@@ -12,6 +12,13 @@ def test_default_rerank_model_path_points_to_models_root():
     assert settings.rerank_model_path == r"L:\RAG_系统\models"
 
 
+def test_default_ports_match_local_development_contract():
+    settings = Settings()
+
+    assert settings.api_port == 9520
+    assert settings.frontend_port == 9521
+
+
 def make_client(tmp_path: Path) -> TestClient:
     settings = Settings(
         database_url=f"sqlite:///{tmp_path / 'v1_test.db'}",
@@ -21,6 +28,21 @@ def make_client(tmp_path: Path) -> TestClient:
     )
     app = create_app(settings)
     return TestClient(app)
+
+
+def test_cors_allows_frontend_port_9521(tmp_path: Path):
+    client = make_client(tmp_path)
+
+    response = client.options(
+        "/api/v1/auth/me",
+        headers={
+            "Origin": "http://127.0.0.1:9521",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:9521"
 
 
 def register(client: TestClient, email: str = "owner@example.com") -> dict:

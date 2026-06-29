@@ -183,14 +183,14 @@ Run: `npm --prefix frontend test -- --run`
 
 - [ ] **Step 3: 启动服务验证**
 
-Run backend: `python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000`
+Run backend: `python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 9520`
 
-Run frontend: `npm --prefix frontend run dev -- --host 127.0.0.1 --port 5173`
+Run frontend: `npm --prefix frontend run dev -- --host 127.0.0.1 --port 9521`
 
 Verify:
 
-- `GET http://127.0.0.1:8000/health` 返回 `{"status":"ok"}`。
-- `http://127.0.0.1:5173` 可以打开前端。
+- `GET http://127.0.0.1:9520/health` 返回 `{"status":"ok"}`。
+- `http://127.0.0.1:9521` 可以打开前端。
 
 - [ ] **Step 4: 提交并推送**
 
