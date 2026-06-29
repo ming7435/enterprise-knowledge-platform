@@ -282,8 +282,8 @@ function DocumentsPanel({
             <div className="table-row" key={document.id}>
               <span className="file-name">{document.filename}</span>
               <span>{document.file_type}</span>
-              <StatusBadge value={document.parse_status} />
-              <StatusBadge value={document.index_status} />
+              <StatusBadge value={document.parse_status} kind="parse" />
+              <StatusBadge value={document.index_status} kind="index" />
               <span>{formatDate(document.created_at)}</span>
             </div>
           ))
@@ -354,8 +354,8 @@ function KnowledgePanel({
           documents.slice(0, 5).map((document) => (
             <div className="table-row compact-row" key={document.id}>
               <span className="file-name">{document.filename}</span>
-              <StatusBadge value={document.parse_status} />
-              <StatusBadge value={document.index_status} />
+              <StatusBadge value={document.parse_status} kind="parse" />
+              <StatusBadge value={document.index_status} kind="index" />
             </div>
           ))
         )}
@@ -418,23 +418,40 @@ function MetricCard({
   );
 }
 
-function StatusBadge({ value }: { value: string }) {
-  return <span className={`status-badge ${value}`}>{statusText(value)}</span>;
+type StatusBadgeKind = 'default' | 'parse' | 'index';
+
+function StatusBadge({ value, kind = 'default' }: { value: string; kind?: StatusBadgeKind }) {
+  return <span className={`status-badge ${value}`}>{statusText(value, kind)}</span>;
 }
 
-function statusText(value: string) {
-  const map: Record<string, string> = {
-    empty: '空',
-    documents_uploaded: '已上传文档',
-    uploaded: '已上传',
-    pending: '待处理',
-    parsing: '解析中',
-    parsed: '已解析',
-    indexing: '入库中',
-    indexed: '已入库',
-    failed: '失败'
+function statusText(value: string, kind: StatusBadgeKind = 'default') {
+  const maps: Record<StatusBadgeKind, Record<string, string>> = {
+    default: {
+      empty: '空',
+      documents_uploaded: '已上传文档',
+      uploaded: '已上传',
+      pending: '待处理',
+      parsing: '解析中',
+      parsed: '已解析',
+      indexing: '入库中',
+      indexed: '已入库',
+      failed: '失败'
+    },
+    parse: {
+      uploaded: '已上传',
+      pending: '待解析',
+      parsing: '解析中',
+      parsed: '已解析',
+      failed: '解析失败'
+    },
+    index: {
+      pending: '待入库',
+      indexing: '入库中',
+      indexed: '已入库',
+      failed: '入库失败'
+    }
   };
-  return map[value] ?? value;
+  return maps[kind][value] ?? maps.default[value] ?? value;
 }
 
 function formatFileSize(size: number) {
