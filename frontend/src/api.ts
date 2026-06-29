@@ -1,0 +1,63 @@
+import type { LoginInput, RegisterInput, User, Workspace } from './types';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
+
+interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  token?: string | null
+): Promise<T> {
+  const headers = new Headers(options.headers);
+  headers.set('Content-Type', 'application/json');
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({ detail: '请求失败' }));
+    throw new Error(payload.detail ?? '请求失败');
+  }
+  return response.json() as Promise<T>;
+}
+
+export const api = {
+  register(input: RegisterInput) {
+    return request<{ user: User; personal_workspace: Workspace }>(
+      '/api/v1/auth/register',
+      {
+        method: 'POST',
+        body: JSON.stringify(input)
+      }
+    );
+  },
+  login(input: LoginInput) {
+    return request<TokenResponse>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    });
+  },
+  me(token: string) {
+    return request<User>('/api/v1/auth/me', {}, token);
+  },
+  workspaces(token: string) {
+    return request<Workspace[]>('/api/v1/workspaces', {}, token);
+  },
+  createEnterprise(token: string, name: string, description: string) {
+    return request<Workspace>(
+      '/api/v1/workspaces/enterprise',
+      {
+        method: 'POST',
+        body: JSON.stringify({ name, description })
+      },
+      token
+    );
+  }
+};
