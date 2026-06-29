@@ -84,6 +84,17 @@ EMAIL_CODE_RESEND_SECONDS=60
 
 n8n、MinIO、Neo4j、MySQL、Redis、Milvus、Attu、etcd 等本地知识库相关配置也统一放在 `.env`，仓库只提交 `.env.example` 占位模板。
 
+V2.1 文档上传优先使用 MinIO。`FILE_STORAGE=minio` 时，系统会尝试写入 `MINIO_BUCKET`；如果 MinIO 不可用，会自动回退到 `LOCAL_STORAGE_ROOT`。
+
+```text
+FILE_STORAGE=minio
+MINIO_ENDPOINT=http://localhost:9000
+MINIO_ACCESS_KEY=你的本地 MinIO 用户名
+MINIO_SECRET_KEY=你的本地 MinIO 密码
+MINIO_BUCKET=enterprise-knowledge-platform
+MINIO_SECURE=false
+```
+
 ## 启动 PostgreSQL
 
 如需使用 PostgreSQL：
@@ -132,6 +143,15 @@ http://127.0.0.1:9521
 4. 确认存在自动创建的个人工作区。
 5. 创建一个企业工作区。
 6. 进入个人工作区和企业工作区，确认左侧导航与当前工作区上下文正常显示。
+
+## V2.1 手工验证流程
+
+1. 登录并进入任意工作区。
+2. 打开左侧“文档”。
+3. 选择一个 `.txt`、`.pdf`、`.docx` 或其他办公文档。
+4. 点击“上传”。
+5. 确认文档列表出现文件名、类型、解析状态、入库状态和上传时间。
+6. 打开左侧“知识库”，确认文档数量同步增加。
 
 ## 后续版本
 

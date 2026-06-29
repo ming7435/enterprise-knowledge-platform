@@ -2,19 +2,24 @@ import {
   ArrowLeftRight,
   Bot,
   Building2,
+  Database,
   FileText,
   Home,
   LogOut,
+  RefreshCw,
   Settings,
   ShieldCheck,
+  Upload,
   Users,
   Workflow
 } from 'lucide-react';
-import { useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
-import type { User, Workspace } from '../types';
+import { api } from '../api';
+import type { DocumentRecord, KnowledgeBaseStatus, User, Workspace } from '../types';
 
 interface WorkspaceShellProps {
+  token: string;
   user: User;
   workspace: Workspace;
   onBackToWorkspaces: () => void;
@@ -44,16 +49,75 @@ const enterpriseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> =
 ];
 
 export function WorkspaceShell({
+  token,
   user,
   workspace,
   onBackToWorkspaces,
   onLogout
 }: WorkspaceShellProps) {
   const [activePage, setActivePage] = useState<PageKey>('dashboard');
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [moduleError, setModuleError] = useState<string | null>(null);
+
   const navItems =
     workspace.type === 'enterprise' ? [...baseNav, ...enterpriseNav] : baseNav;
   const currentNav = navItems.find((item) => item.key === activePage) ?? navItems[0];
   const workspaceLabel = workspace.type === 'enterprise' ? '企业工作区' : '个人工作区';
+  const latestDocuments = useMemo(() => documents.slice(0, 3), [documents]);
+
+  useEffect(() => {
+    setDocuments([]);
+    setKnowledgeBase(null);
+    setSelectedFile(null);
+    setModuleError(null);
+    setActivePage('dashboard');
+  }, [workspace.id]);
+
+  useEffect(() => {
+    if (activePage === 'documents' || activePage === 'knowledge' || activePage === 'dashboard') {
+      void loadWorkspaceModules();
+    }
+  }, [activePage, workspace.id]);
+
+  async function loadWorkspaceModules() {
+    try {
+      setModuleLoading(true);
+      setModuleError(null);
+      const [nextDocuments, nextKnowledgeBase] = await Promise.all([
+        api.documents(token, workspace.id),
+        api.knowledgeBase(token, workspace.id)
+      ]);
+      setDocuments(nextDocuments);
+      setKnowledgeBase(nextKnowledgeBase);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '模块数据加载失败');
+    } finally {
+      setModuleLoading(false);
+    }
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    setSelectedFile(event.target.files?.[0] ?? null);
+  }
+
+  async function handleUpload() {
+    if (!selectedFile) return;
+    try {
+      setUploading(true);
+      setModuleError(null);
+      await api.uploadDocument(token, workspace.id, selectedFile);
+      setSelectedFile(null);
+      await loadWorkspaceModules();
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '文档上传失败');
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <main className="app-shell">
@@ -102,28 +166,290 @@ export function WorkspaceShell({
           </div>
         </header>
 
-        <section className="content-panel">
-          <p className="eyebrow">{currentNav.label}</p>
-          <h2>{pageTitle(activePage, workspace.type)}</h2>
-          <p>{pageDescription(activePage, workspace.type)}</p>
-          <div className="metric-grid">
-            <div>
-              <span>工作区 ID</span>
-              <strong>{workspace.id}</strong>
-            </div>
-            <div>
-              <span>角色</span>
-              <strong>{workspace.role || 'member'}</strong>
-            </div>
-            <div>
-              <span>隔离字段</span>
-              <strong>workspace_id</strong>
-            </div>
-          </div>
-        </section>
+        {activePage === 'documents' ? (
+          <DocumentsPanel
+            documents={documents}
+            currentNavLabel={currentNav.label}
+            loading={moduleLoading}
+            uploading={uploading}
+            selectedFile={selectedFile}
+            error={moduleError}
+            onFileChange={handleFileChange}
+            onUpload={handleUpload}
+            onRefresh={loadWorkspaceModules}
+          />
+        ) : activePage === 'knowledge' ? (
+          <KnowledgePanel
+            currentNavLabel={currentNav.label}
+            knowledgeBase={knowledgeBase}
+            documents={documents}
+            loading={moduleLoading}
+            error={moduleError}
+            onRefresh={loadWorkspaceModules}
+          />
+        ) : (
+          <DefaultPanel
+            activePage={activePage}
+            workspace={workspace}
+            currentNavLabel={currentNav.label}
+            knowledgeBase={knowledgeBase}
+            latestDocuments={latestDocuments}
+          />
+        )}
       </section>
     </main>
   );
+}
+
+function DocumentsPanel({
+  documents,
+  currentNavLabel,
+  loading,
+  uploading,
+  selectedFile,
+  error,
+  onFileChange,
+  onUpload,
+  onRefresh
+}: {
+  documents: DocumentRecord[];
+  currentNavLabel: string;
+  loading: boolean;
+  uploading: boolean;
+  selectedFile: File | null;
+  error: string | null;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onUpload: () => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="content-panel module-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">{currentNavLabel}</p>
+          <h2>文档管理</h2>
+          <p>文档上传后会进入当前工作区，后续版本继续解析、切片和向量化。</p>
+        </div>
+        <button className="ghost-button" onClick={onRefresh} disabled={loading}>
+          <RefreshCw size={18} aria-hidden="true" />
+          刷新
+        </button>
+      </div>
+
+      <div className="upload-card">
+        <div className="upload-copy">
+          <Upload size={24} aria-hidden="true" />
+          <div>
+            <strong>{selectedFile ? selectedFile.name : '选择要上传的文档'}</strong>
+            <span>{selectedFile ? formatFileSize(selectedFile.size) : '支持常见办公文档和文本文件'}</span>
+          </div>
+        </div>
+        <div className="upload-actions">
+          <label className="file-picker">
+            选择文件
+            <input
+              type="file"
+              onChange={onFileChange}
+              accept=".txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv"
+            />
+          </label>
+          <button
+            className="primary-action compact-action"
+            type="button"
+            disabled={!selectedFile || uploading}
+            onClick={onUpload}
+          >
+            <Upload size={18} aria-hidden="true" />
+            {uploading ? '上传中' : '上传'}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="document-table">
+        <div className="table-head">
+          <span>文件名</span>
+          <span>类型</span>
+          <span>解析</span>
+          <span>入库</span>
+          <span>上传时间</span>
+        </div>
+        {documents.length === 0 ? (
+          <div className="empty-row">当前工作区还没有文档。</div>
+        ) : (
+          documents.map((document) => (
+            <div className="table-row" key={document.id}>
+              <span className="file-name">{document.filename}</span>
+              <span>{document.file_type}</span>
+              <StatusBadge value={document.parse_status} />
+              <StatusBadge value={document.index_status} />
+              <span>{formatDate(document.created_at)}</span>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function KnowledgePanel({
+  currentNavLabel,
+  knowledgeBase,
+  documents,
+  loading,
+  error,
+  onRefresh
+}: {
+  currentNavLabel: string;
+  knowledgeBase: KnowledgeBaseStatus | null;
+  documents: DocumentRecord[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="content-panel module-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">{currentNavLabel}</p>
+          <h2>知识库状态</h2>
+          <p>V2.1 展示文档级状态，解析、切片和 Milvus 入库会在后续阶段接入。</p>
+        </div>
+        <button className="ghost-button" onClick={onRefresh} disabled={loading}>
+          <RefreshCw size={18} aria-hidden="true" />
+          刷新
+        </button>
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="knowledge-grid">
+        <MetricCard
+          label="知识库状态"
+          value={statusText(knowledgeBase?.status ?? 'empty')}
+          icon={Database}
+        />
+        <MetricCard
+          label="文档数量"
+          value={String(knowledgeBase?.document_count ?? documents.length)}
+          icon={FileText}
+        />
+        <MetricCard
+          label="知识片段"
+          value={String(knowledgeBase?.chunk_count ?? 0)}
+          icon={Workflow}
+        />
+      </div>
+
+      <div className="document-table compact-table">
+        <div className="table-head">
+          <span>最近文档</span>
+          <span>解析</span>
+          <span>入库</span>
+        </div>
+        {documents.length === 0 ? (
+          <div className="empty-row">上传文档后这里会显示知识库来源。</div>
+        ) : (
+          documents.slice(0, 5).map((document) => (
+            <div className="table-row compact-row" key={document.id}>
+              <span className="file-name">{document.filename}</span>
+              <StatusBadge value={document.parse_status} />
+              <StatusBadge value={document.index_status} />
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DefaultPanel({
+  activePage,
+  workspace,
+  currentNavLabel,
+  knowledgeBase,
+  latestDocuments
+}: {
+  activePage: PageKey;
+  workspace: Workspace;
+  currentNavLabel: string;
+  knowledgeBase: KnowledgeBaseStatus | null;
+  latestDocuments: DocumentRecord[];
+}) {
+  return (
+    <section className="content-panel">
+      <p className="eyebrow">{currentNavLabel}</p>
+      <h2>{pageTitle(activePage, workspace.type)}</h2>
+      <p>{pageDescription(activePage, workspace.type)}</p>
+      <div className="metric-grid">
+        <div>
+          <span>工作区 ID</span>
+          <strong>{workspace.id}</strong>
+        </div>
+        <div>
+          <span>角色</span>
+          <strong>{workspace.role || 'member'}</strong>
+        </div>
+        <div>
+          <span>文档数量</span>
+          <strong>{knowledgeBase?.document_count ?? latestDocuments.length}</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  icon: Icon
+}: {
+  label: string;
+  value: string;
+  icon: typeof Home;
+}) {
+  return (
+    <div className="knowledge-card">
+      <Icon size={22} aria-hidden="true" />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function StatusBadge({ value }: { value: string }) {
+  return <span className={`status-badge ${value}`}>{statusText(value)}</span>;
+}
+
+function statusText(value: string) {
+  const map: Record<string, string> = {
+    empty: '空',
+    documents_uploaded: '已上传文档',
+    uploaded: '已上传',
+    pending: '待处理',
+    parsing: '解析中',
+    parsed: '已解析',
+    indexing: '入库中',
+    indexed: '已入库',
+    failed: '失败'
+  };
+  return map[value] ?? value;
+}
+
+function formatFileSize(size: number) {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(value));
 }
 
 function pageTitle(page: PageKey, type: Workspace['type']) {
@@ -142,9 +468,9 @@ function pageTitle(page: PageKey, type: Workspace['type']) {
 function pageDescription(page: PageKey, type: Workspace['type']) {
   const shared: Record<PageKey, string> = {
     dashboard: '展示文档数量、知识片段、向量库状态、最近问答和最近操作。',
-    documents: 'V1 提供文档模块入口，V2 接入上传、解析、切片和入库流程。',
-    knowledge: 'V1 保留知识库状态与配置入口，V2 接入 FAISS 或 Chroma。',
-    chat: 'V1 保留会话入口，V3 接入普通对话、RAG 问答和来源追溯。',
+    documents: '上传、查看和管理当前工作区内的知识文档。',
+    knowledge: '查看知识库状态、文档来源和后续入库进度。',
+    chat: 'V3 接入普通对话、RAG 问答和来源追溯。',
     settings: '管理模型、向量库、Webhook、存储等工作区级配置。',
     members: 'V4 将实现邀请成员、移除成员、角色权限和文档权限。',
     audit: '记录登录、文档、知识库、问答、工具、设置和权限操作。'

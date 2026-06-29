@@ -14,6 +14,26 @@ export interface Workspace {
   role?: string | null;
 }
 
+export interface DocumentRecord {
+  id: string;
+  workspace_id: string;
+  filename: string;
+  file_type: string;
+  file_path?: string | null;
+  parse_status: string;
+  index_status: string;
+  chunk_count: number;
+  permission_scope: string;
+  created_at: string;
+}
+
+export interface KnowledgeBaseStatus {
+  workspace_id: string;
+  status: string;
+  document_count: number;
+  chunk_count: number;
+}
+
 export interface LoginInput {
   email: string;
   password: string;
