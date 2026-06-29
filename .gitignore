@@ -45,6 +45,14 @@ logs/
 tmp/
 temp/
 
+# 测试文件与过程文档不上传
+backend/tests/
+backend/pytest.ini
+frontend/src/**/*.test.*
+frontend/src/**/__tests__/
+frontend/src/test/
+docs/superpowers/
+
 # 系统文件
 .DS_Store
 Thumbs.db
