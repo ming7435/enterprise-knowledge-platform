@@ -1,4 +1,6 @@
 import {
+  Eye,
+  EyeOff,
   KeyRound,
   Lock,
   LogIn,
@@ -54,6 +56,7 @@ export function AuthForms({
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [codeMessage, setCodeMessage] = useState<string | null>(null);
@@ -254,11 +257,24 @@ export function AuthForms({
                 <Lock size={18} aria-hidden="true" />
                 <input
                   value={password}
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="至少 8 位"
                   autoComplete={isRegister ? 'new-password' : 'current-password'}
                 />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                  title={showPassword ? '隐藏密码' : '显示密码'}
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  {showPassword ? (
+                    <EyeOff size={18} aria-hidden="true" />
+                  ) : (
+                    <Eye size={18} aria-hidden="true" />
+                  )}
+                </button>
               </div>
               {errors.password && <small>{errors.password}</small>}
             </label>
