@@ -428,7 +428,7 @@ p {
 .table-row,
 .empty-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) 90px 110px 110px 150px;
+  grid-template-columns: minmax(180px, 1.5fr) 80px 100px 100px 70px 150px;
   gap: 12px;
   align-items: center;
   min-height: 48px;
@@ -478,6 +478,7 @@ p {
 
 .status-badge.uploaded,
 .status-badge.documents_uploaded,
+.status-badge.ready,
 .status-badge.parsed,
 .status-badge.indexed {
   background: #ecfdf5;
@@ -521,6 +522,71 @@ p {
 
 .knowledge-card strong {
   font-size: 22px;
+}
+
+.knowledge-search {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.knowledge-search .input-row {
+  min-height: 42px;
+}
+
+.chunk-list {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.chunk-list-head,
+.chunk-item {
+  padding: 14px;
+}
+
+.chunk-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fafc;
+}
+
+.chunk-list-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.chunk-list-head span,
+.chunk-item div span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chunk-item {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.chunk-item div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.chunk-item p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #334155;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .metric-grid {
@@ -571,9 +637,14 @@ p {
 
   .panel-heading,
   .upload-card,
-  .upload-actions {
+  .upload-actions,
+  .knowledge-search {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .knowledge-search {
+    grid-template-columns: 1fr;
   }
 
   .table-head,

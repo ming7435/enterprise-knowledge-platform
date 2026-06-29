@@ -15,15 +15,21 @@ from app.schemas.modules import (
     AuditLogPublic,
     ChatSessionCreate,
     ChatSessionPublic,
+    DocumentChunkPublic,
     DocumentCreate,
     DocumentPublic,
     KnowledgeBaseStatus,
+    KnowledgeSearchResult,
     WorkspaceSettingPublic,
 )
 from app.services.workspace_service import require_workspace_member, write_audit_log
 from app.api.deps import get_settings
 from app.core.config import Settings
-from app.services.document_service import upload_document_content
+from app.services.document_service import (
+    list_workspace_chunks,
+    search_workspace_chunks,
+    upload_document_content,
+)
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["workspace-modules"])
 
@@ -117,6 +123,36 @@ def get_knowledge_base(
         select(KnowledgeBase).where(KnowledgeBase.workspace_id == workspace_id)
     ).scalar_one()
     return knowledge_base
+
+
+@router.get("/knowledge-base/chunks", response_model=list[DocumentChunkPublic])
+def get_knowledge_base_chunks(
+    workspace_id: str,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    safe_limit = min(max(limit, 1), 50)
+    return list_workspace_chunks(db, workspace_id=workspace_id, limit=safe_limit)
+
+
+@router.get("/knowledge-base/search", response_model=list[KnowledgeSearchResult])
+def search_knowledge_base(
+    workspace_id: str,
+    query: str,
+    limit: int = 10,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    safe_limit = min(max(limit, 1), 20)
+    return search_workspace_chunks(
+        db,
+        workspace_id=workspace_id,
+        query=query,
+        limit=safe_limit,
+    )
 
 
 @router.get("/chat-sessions", response_model=list[ChatSessionPublic])
