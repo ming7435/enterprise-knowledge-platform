@@ -1,4 +1,11 @@
-import type { LoginInput, RegisterInput, User, Workspace } from './types';
+import type {
+  EmailCodeLoginInput,
+  EmailCodePurpose,
+  LoginInput,
+  RegisterInput,
+  User,
+  Workspace
+} from './types';
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:9520';
@@ -41,6 +48,18 @@ export const api = {
   },
   login(input: LoginInput) {
     return request<TokenResponse>('/api/v1/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(input)
+    });
+  },
+  sendEmailCode(email: string, purpose: EmailCodePurpose) {
+    return request<{ message: string }>('/api/v1/auth/email-code/send', {
+      method: 'POST',
+      body: JSON.stringify({ email, purpose })
+    });
+  },
+  emailCodeLogin(input: EmailCodeLoginInput) {
+    return request<TokenResponse>('/api/v1/auth/email-code/login', {
       method: 'POST',
       body: JSON.stringify(input)
     });

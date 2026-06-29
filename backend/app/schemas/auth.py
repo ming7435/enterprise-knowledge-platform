@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -14,11 +16,26 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     username: str = Field(min_length=1, max_length=100)
     password: str = Field(min_length=8, max_length=128)
+    verification_code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+
+
+class SendEmailCodeRequest(BaseModel):
+    email: EmailStr
+    purpose: Literal["login", "register"]
+
+
+class EmailCodeLoginRequest(BaseModel):
+    email: EmailStr
+    verification_code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class SendEmailCodeResponse(BaseModel):
+    message: str
 
 
 class TokenResponse(BaseModel):
