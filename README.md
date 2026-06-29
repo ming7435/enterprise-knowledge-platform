@@ -107,20 +107,6 @@ npm --prefix frontend run dev -- --host 127.0.0.1 --port 9521
 http://127.0.0.1:9521
 ```
 
-## 运行测试
-
-后端：
-
-```powershell
-python -m pytest backend/tests/test_v1_api.py -q
-```
-
-前端：
-
-```powershell
-npm --prefix frontend test -- --run
-```
-
 ## V1 手工验证流程
 
 1. 打开前端地址。

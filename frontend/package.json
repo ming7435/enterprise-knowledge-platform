@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
-    "test": "vitest"
+    "build": "tsc && vite build"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -16,13 +15,8 @@
     "vite": "latest"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "latest",
-    "@testing-library/react": "latest",
-    "@testing-library/user-event": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "jsdom": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "typescript": "latest"
   }
 }
