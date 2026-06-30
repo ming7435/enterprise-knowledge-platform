@@ -18,6 +18,10 @@ from app.models.entities import (
 )
 from app.services.storage_service import delete_document_file
 
+WORKSPACE_ROLES = {"owner", "admin", "member", "viewer"}
+WORKSPACE_WRITE_ROLES = {"owner", "admin", "member"}
+WORKSPACE_MANAGE_ROLES = {"owner", "admin"}
+
 
 def write_audit_log(
     db: Session,
@@ -49,6 +53,20 @@ def workspace_to_public(workspace: Workspace, role: str | None = None) -> dict:
         "description": workspace.description,
         "status": workspace.status,
         "role": role,
+    }
+
+
+def workspace_member_to_public(member: WorkspaceMember, user: User) -> dict:
+    return {
+        "id": member.id,
+        "workspace_id": member.workspace_id,
+        "user_id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "role": member.role,
+        "department": member.department,
+        "status": member.status,
+        "joined_at": member.joined_at,
     }
 
 
@@ -129,6 +147,237 @@ def require_workspace_member(
     return row
 
 
+def require_workspace_role(
+    db: Session,
+    *,
+    user: User,
+    workspace_id: str,
+    allowed_roles: set[str],
+) -> tuple[Workspace, WorkspaceMember]:
+    workspace, membership = require_workspace_member(
+        db,
+        user=user,
+        workspace_id=workspace_id,
+    )
+    if membership.role not in allowed_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="当前角色无权执行该操作",
+        )
+    return workspace, membership
+
+
+def list_workspace_members(
+    db: Session,
+    *,
+    user: User,
+    workspace_id: str,
+) -> list[dict]:
+    workspace, _membership = require_workspace_member(
+        db,
+        user=user,
+        workspace_id=workspace_id,
+    )
+    _require_enterprise_workspace(workspace)
+    rows = db.execute(
+        select(WorkspaceMember, User)
+        .join(User, User.id == WorkspaceMember.user_id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.status == "active",
+        )
+        .order_by(WorkspaceMember.role.asc(), WorkspaceMember.joined_at.asc())
+    ).all()
+    return [workspace_member_to_public(member, member_user) for member, member_user in rows]
+
+
+def add_workspace_member_by_email(
+    db: Session,
+    *,
+    actor: User,
+    workspace_id: str,
+    email: str,
+    role: str,
+    department: str | None = None,
+) -> dict:
+    workspace, actor_membership = require_workspace_role(
+        db,
+        user=actor,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_MANAGE_ROLES,
+    )
+    _require_enterprise_workspace(workspace)
+    normalized_role = _normalize_member_role(role)
+    if normalized_role == "owner":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能通过成员邀请创建 owner 角色",
+        )
+    if actor_membership.role == "admin" and normalized_role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="管理员不能添加其他管理员",
+        )
+
+    normalized_email = email.strip().lower()
+    target_user = db.execute(
+        select(User).where(User.email == normalized_email, User.status == "active")
+    ).scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在，请先让对方注册账号",
+        )
+
+    existing = db.execute(
+        select(WorkspaceMember).where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.user_id == target_user.id,
+        )
+    ).scalar_one_or_none()
+    if existing is not None and existing.status == "active":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该用户已经是工作区成员",
+        )
+    if existing is None:
+        membership = WorkspaceMember(
+            workspace_id=workspace_id,
+            user_id=target_user.id,
+            role=normalized_role,
+            department=department,
+            status="active",
+        )
+        db.add(membership)
+    else:
+        membership = existing
+        membership.role = normalized_role
+        membership.department = department
+        membership.status = "active"
+
+    write_audit_log(
+        db,
+        action="member.added",
+        user_id=actor.id,
+        workspace_id=workspace_id,
+        target_type="workspace_member",
+        target_id=target_user.id,
+        detail={
+            "email": target_user.email,
+            "role": normalized_role,
+            "department": department,
+        },
+    )
+    db.flush()
+    return workspace_member_to_public(membership, target_user)
+
+
+def update_workspace_member(
+    db: Session,
+    *,
+    actor: User,
+    workspace_id: str,
+    member_id: str,
+    role: str,
+    department: str | None = None,
+) -> dict:
+    workspace, actor_membership = require_workspace_role(
+        db,
+        user=actor,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_MANAGE_ROLES,
+    )
+    _require_enterprise_workspace(workspace)
+    membership, target_user = _get_active_workspace_member(
+        db,
+        workspace_id=workspace_id,
+        member_id=member_id,
+    )
+    if membership.user_id == actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="不能修改自己的工作区角色",
+        )
+    _ensure_member_is_manageable(
+        workspace=workspace,
+        actor_membership=actor_membership,
+        target_membership=membership,
+    )
+    normalized_role = _normalize_member_role(role)
+    if normalized_role == "owner":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能把成员角色修改为 owner",
+        )
+    if actor_membership.role == "admin" and normalized_role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="管理员不能授予管理员角色",
+        )
+
+    old_role = membership.role
+    membership.role = normalized_role
+    membership.department = department
+    write_audit_log(
+        db,
+        action="member.role_updated",
+        user_id=actor.id,
+        workspace_id=workspace_id,
+        target_type="workspace_member",
+        target_id=membership.id,
+        detail={
+            "email": target_user.email,
+            "old_role": old_role,
+            "new_role": normalized_role,
+            "department": department,
+        },
+    )
+    db.flush()
+    return workspace_member_to_public(membership, target_user)
+
+
+def remove_workspace_member(
+    db: Session,
+    *,
+    actor: User,
+    workspace_id: str,
+    member_id: str,
+) -> None:
+    workspace, actor_membership = require_workspace_role(
+        db,
+        user=actor,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_MANAGE_ROLES,
+    )
+    _require_enterprise_workspace(workspace)
+    membership, target_user = _get_active_workspace_member(
+        db,
+        workspace_id=workspace_id,
+        member_id=member_id,
+    )
+    if membership.user_id == actor.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="不能移除自己",
+        )
+    _ensure_member_is_manageable(
+        workspace=workspace,
+        actor_membership=actor_membership,
+        target_membership=membership,
+    )
+    membership.status = "removed"
+    write_audit_log(
+        db,
+        action="member.removed",
+        user_id=actor.id,
+        workspace_id=workspace_id,
+        target_type="workspace_member",
+        target_id=membership.id,
+        detail={"email": target_user.email, "role": membership.role},
+    )
+    db.flush()
+
+
 def delete_workspace_with_contents(
     db: Session,
     *,
@@ -191,3 +440,62 @@ def delete_workspace_with_contents(
     db.delete(workspace)
     db.flush()
     return workspace
+
+
+def _require_enterprise_workspace(workspace: Workspace) -> None:
+    if workspace.type != "enterprise":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="成员协作仅支持企业工作区",
+        )
+
+
+def _normalize_member_role(role: str) -> str:
+    normalized_role = role.strip().lower()
+    if normalized_role not in WORKSPACE_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="成员角色必须是 owner、admin、member 或 viewer",
+        )
+    return normalized_role
+
+
+def _get_active_workspace_member(
+    db: Session,
+    *,
+    workspace_id: str,
+    member_id: str,
+) -> tuple[WorkspaceMember, User]:
+    row = db.execute(
+        select(WorkspaceMember, User)
+        .join(User, User.id == WorkspaceMember.user_id)
+        .where(
+            WorkspaceMember.id == member_id,
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.status == "active",
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="成员不存在",
+        )
+    return row
+
+
+def _ensure_member_is_manageable(
+    *,
+    workspace: Workspace,
+    actor_membership: WorkspaceMember,
+    target_membership: WorkspaceMember,
+) -> None:
+    if target_membership.role == "owner" or target_membership.user_id == workspace.owner_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="不能修改或移除工作区所有者",
+        )
+    if actor_membership.role == "admin" and target_membership.role == "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="管理员不能管理其他管理员",
+        )

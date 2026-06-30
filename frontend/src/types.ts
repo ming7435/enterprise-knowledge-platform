@@ -57,6 +57,31 @@ export interface ChatAskResponse {
   model_name: string;
 }
 
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
+
+export interface WorkspaceMember {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  email: string;
+  username: string;
+  role: WorkspaceRole;
+  department?: string | null;
+  status: string;
+  joined_at: string;
+}
+
+export interface AuditLogRecord {
+  id: string;
+  workspace_id?: string | null;
+  user_id?: string | null;
+  action: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  detail: Record<string, unknown>;
+  created_at: string;
+}
+
 export interface LoginInput {
   email: string;
   password: string;

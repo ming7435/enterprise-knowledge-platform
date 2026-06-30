@@ -23,7 +23,13 @@ from app.schemas.modules import (
     KnowledgeSearchResult,
     WorkspaceSettingPublic,
 )
-from app.services.workspace_service import require_workspace_member, write_audit_log
+from app.services.workspace_service import (
+    WORKSPACE_MANAGE_ROLES,
+    WORKSPACE_WRITE_ROLES,
+    require_workspace_member,
+    require_workspace_role,
+    write_audit_log,
+)
 from app.api.deps import get_settings
 from app.core.config import Settings
 from app.services.document_service import (
@@ -65,7 +71,12 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ):
-    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    require_workspace_role(
+        db,
+        user=current_user,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_WRITE_ROLES,
+    )
     content = await file.read()
     document = upload_document_content(
         db,
@@ -90,7 +101,12 @@ def delete_document(
     current_user: User = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ):
-    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    require_workspace_role(
+        db,
+        user=current_user,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_WRITE_ROLES,
+    )
     delete_workspace_document(
         db,
         settings=settings,
@@ -112,7 +128,12 @@ def create_document_record(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    require_workspace_role(
+        db,
+        user=current_user,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_WRITE_ROLES,
+    )
     document = Document(
         workspace_id=workspace_id,
         user_id=current_user.id,
@@ -245,7 +266,12 @@ def list_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    require_workspace_role(
+        db,
+        user=current_user,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_MANAGE_ROLES,
+    )
     return db.execute(
         select(WorkspaceSetting).where(WorkspaceSetting.workspace_id == workspace_id)
     ).scalars().all()
@@ -257,7 +283,12 @@ def list_audit_logs(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    require_workspace_role(
+        db,
+        user=current_user,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_MANAGE_ROLES,
+    )
     return db.execute(
         select(AuditLog)
         .where(AuditLog.workspace_id == workspace_id)

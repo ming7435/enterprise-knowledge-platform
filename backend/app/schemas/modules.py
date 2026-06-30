@@ -105,3 +105,4 @@ class AuditLogPublic(BaseModel):
     target_type: str | None
     target_id: str | None
     detail: dict
+    created_at: datetime
