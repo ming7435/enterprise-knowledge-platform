@@ -135,7 +135,7 @@ RAG_TOP_K=5
 RERANK_MODEL_PATH=L:\RAG_系统\models
 ```
 
-如果不配置 `DEEPSEEK_API_KEY`，系统会尝试调用 Ollama；如果 Ollama 也不可用，会用本地知识片段生成兜底回答，保证 V3 问答流程仍可本地跑通。
+要生成正常的大模型综合回答，本地 `.env` 必须配置 `DEEPSEEK_API_KEY`，或确保 Ollama 服务和 `OLLAMA_MODEL` 可用。系统会把检索到的知识片段作为上下文交给大模型生成自然语言答案，来源片段只在前端“来源”区域展示，不再直接拼进回答正文。如果 DeepSeek 和 Ollama 都不可用，接口会明确提示模型未连通。
 
 ## 启动 PostgreSQL
 
