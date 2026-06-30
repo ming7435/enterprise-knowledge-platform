@@ -272,6 +272,21 @@ p {
   gap: 14px;
 }
 
+.workspace-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.workspace-column-head h2 {
+  margin: 0;
+}
+
+.compact-create {
+  min-height: 36px;
+}
+
 .create-enterprise {
   padding: 20px;
 }
@@ -282,6 +297,27 @@ p {
   align-items: center;
   gap: 14px;
   padding: 18px;
+}
+
+.workspace-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-card-actions .danger-action {
+  display: inline-grid;
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #fecaca;
+  background: #fff;
+  color: #b42318;
+}
+
+.workspace-card-actions .danger-action:hover:not(:disabled) {
+  background: #fef2f2;
 }
 
 .card-icon {
@@ -669,6 +705,10 @@ p {
     grid-template-columns: 48px 1fr;
   }
 
+  .workspace-card-actions {
+    grid-column: 1 / -1;
+  }
+
   .code-row {
     grid-template-columns: 1fr;
   }
@@ -697,7 +737,7 @@ p {
     display: none;
   }
 
-  .workspace-card button {
+  .workspace-card-actions button {
     grid-column: 1 / -1;
   }
 }
