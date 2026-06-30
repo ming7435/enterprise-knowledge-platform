@@ -7,7 +7,6 @@ from app.models.entities import (
     AuditLog,
     ChatSession,
     Document,
-    KnowledgeBase,
     User,
     WorkspaceSetting,
 )
@@ -29,6 +28,7 @@ from app.services.document_service import (
     delete_workspace_document,
     list_workspace_chunks,
     search_workspace_chunks,
+    sync_knowledge_base_counts,
     upload_document_content,
 )
 
@@ -139,9 +139,9 @@ def get_knowledge_base(
     current_user: User = Depends(get_current_user),
 ):
     require_workspace_member(db, user=current_user, workspace_id=workspace_id)
-    knowledge_base = db.execute(
-        select(KnowledgeBase).where(KnowledgeBase.workspace_id == workspace_id)
-    ).scalar_one()
+    knowledge_base = sync_knowledge_base_counts(db, workspace_id=workspace_id)
+    db.commit()
+    db.refresh(knowledge_base)
     return knowledge_base
 
 
