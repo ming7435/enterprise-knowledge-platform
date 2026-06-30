@@ -145,3 +145,44 @@ def authenticate_user_by_email_code(
     )
     db.commit()
     return user
+
+
+def reset_user_password(
+    db: Session,
+    *,
+    email: str,
+    verification_code: str,
+    new_password: str,
+    verification_service: EmailVerificationService,
+) -> User:
+    normalized_email = email.lower()
+    user = db.execute(
+        select(User).where(User.email == normalized_email, User.status == "active")
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="邮箱未注册，请先注册",
+        )
+    try:
+        verification_service.consume_code(
+            db,
+            email=normalized_email,
+            code=verification_code,
+            purpose="reset_password",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    user.password_hash = hash_password(new_password)
+    write_audit_log(
+        db,
+        action="auth.password_reset",
+        user_id=user.id,
+        target_type="user",
+        target_id=user.id,
+    )
+    db.flush()
+    return user

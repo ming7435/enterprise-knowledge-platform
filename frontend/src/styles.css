@@ -159,6 +159,26 @@ label {
   color: #0f766e;
 }
 
+.link-action {
+  width: fit-content;
+  min-height: auto;
+  margin: -6px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.link-action:hover {
+  color: #115e59;
+  text-decoration: underline;
+}
+
+.mode-return {
+  margin-bottom: 14px;
+}
+
 .code-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px;

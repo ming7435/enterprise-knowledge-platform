@@ -5,6 +5,7 @@
 ## V1 已包含
 
 - 注册、登录、JWT 登录态。
+- 邮箱验证码登录、邮箱验证码注册、忘记密码重置。
 - 注册后自动创建个人工作区。
 - 登录后进入工作区选择页。
 - 创建企业工作区。
@@ -89,6 +90,14 @@ SMTP_USE_TLS=false
 EMAIL_CODE_EXPIRE_MINUTES=10
 EMAIL_CODE_RESEND_SECONDS=60
 ```
+
+如果发送验证码失败，先确认当前 conda 环境已安装后端依赖：
+
+```powershell
+python -m pip install --no-user -r backend\requirements.txt
+```
+
+如果启动时提示缺少 `python-multipart`，说明当前 Python 环境没有安装上传接口依赖，重新执行上面的安装命令即可。若接口提示邮件发送失败，检查 `.env` 中 `SMTP_USERNAME`、`SMTP_PASSWORD`、`SMTP_FROM_EMAIL` 是否填写的是同一个 QQ 邮箱和对应 SMTP 授权码。
 
 n8n、MinIO、Neo4j、MySQL、Redis、Milvus、Attu、etcd 等本地知识库相关配置也统一放在 `.env`，仓库只提交 `.env.example` 占位模板。
 

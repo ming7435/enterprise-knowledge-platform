@@ -11,6 +11,7 @@ from app.schemas.auth import (
     RegisterRequest,
     RegisterResponse,
     EmailCodeLoginRequest,
+    ResetPasswordRequest,
     SendEmailCodeRequest,
     SendEmailCodeResponse,
     TokenResponse,
@@ -20,6 +21,7 @@ from app.services.auth_service import (
     authenticate_user,
     authenticate_user_by_email_code,
     register_user,
+    reset_user_password,
     user_to_public,
 )
 from app.services.email_verification_service import create_email_verification_service
@@ -77,6 +79,11 @@ def send_email_code(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="邮箱未注册，请先注册",
         )
+    if payload.purpose == "reset_password" and user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="邮箱未注册，请先注册",
+        )
 
     verification_service = create_email_verification_service(settings)
     try:
@@ -106,6 +113,24 @@ def send_email_code(
         ) from exc
 
     return {"message": "验证码已发送，请查看邮箱"}
+
+
+@router.post("/password/reset", response_model=SendEmailCodeResponse)
+def reset_password(
+    payload: ResetPasswordRequest,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    verification_service = create_email_verification_service(settings)
+    reset_user_password(
+        db,
+        email=payload.email,
+        verification_code=payload.verification_code,
+        new_password=payload.new_password,
+        verification_service=verification_service,
+    )
+    db.commit()
+    return {"message": "密码已重置，请使用新密码登录"}
 
 
 @router.post("/login", response_model=TokenResponse)
