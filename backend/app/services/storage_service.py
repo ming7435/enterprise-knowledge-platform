@@ -33,6 +33,9 @@ class DocumentStorage:
     ) -> str:
         raise NotImplementedError
 
+    def delete(self, file_path: str | None) -> None:
+        raise NotImplementedError
+
 
 class LocalDocumentStorage(DocumentStorage):
     def __init__(self, root: str):
@@ -53,6 +56,13 @@ class LocalDocumentStorage(DocumentStorage):
         target_path.write_bytes(content)
         return str(target_path)
 
+    def delete(self, file_path: str | None) -> None:
+        if not file_path:
+            return
+        target_path = Path(file_path)
+        if target_path.exists() and target_path.is_file():
+            target_path.unlink()
+
 
 class MinioDocumentStorage(DocumentStorage):
     def __init__(self, settings: Settings):
@@ -64,15 +74,23 @@ class MinioDocumentStorage(DocumentStorage):
         if not settings.minio_access_key or not settings.minio_secret_key:
             raise RuntimeError("MinIO 账号未配置")
 
+        import urllib3
+        from urllib3.util import Retry, Timeout
+
         parsed = urlparse(settings.minio_endpoint)
         endpoint = parsed.netloc or parsed.path
         secure = settings.minio_secure or parsed.scheme == "https"
         self.bucket = settings.minio_bucket
+        http_client = urllib3.PoolManager(
+            timeout=Timeout(connect=1.0, read=2.0),
+            retries=Retry(total=1, connect=1, read=0, redirect=0),
+        )
         self.client = Minio(
             endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
             secure=secure,
+            http_client=http_client,
         )
 
     def save(
@@ -101,6 +119,26 @@ class MinioDocumentStorage(DocumentStorage):
             content_type=content_type or "application/octet-stream",
         )
         return f"minio://{self.bucket}/{object_name}"
+
+    def delete(self, file_path: str | None) -> None:
+        if not file_path or not file_path.startswith("minio://"):
+            return
+        without_scheme = file_path.removeprefix("minio://")
+        bucket, _, object_name = without_scheme.partition("/")
+        if bucket and object_name:
+            self.client.remove_object(bucket, object_name)
+
+
+def delete_document_file(settings: Settings, file_path: str | None) -> None:
+    if not file_path:
+        return
+    try:
+        if file_path.startswith("minio://"):
+            MinioDocumentStorage(settings).delete(file_path)
+        else:
+            LocalDocumentStorage(settings.local_storage_root).delete(file_path)
+    except Exception:
+        return
 
 
 def create_document_storage(settings: Settings) -> DocumentStorage:

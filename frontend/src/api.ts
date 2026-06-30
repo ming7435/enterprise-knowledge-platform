@@ -38,6 +38,9 @@ async function request<T>(
     const payload = await response.json().catch(() => ({ detail: '请求失败' }));
     throw new Error(payload.detail ?? '请求失败');
   }
+  if (response.status === 204) {
+    return undefined as T;
+  }
   return response.json() as Promise<T>;
 }
 
@@ -126,6 +129,15 @@ export const api = {
       {
         method: 'POST',
         body: formData
+      },
+      token
+    );
+  },
+  deleteDocument(token: string, workspaceId: string, documentId: string) {
+    return request<void>(
+      `/api/v1/workspaces/${workspaceId}/documents/${documentId}`,
+      {
+        method: 'DELETE'
       },
       token
     );
