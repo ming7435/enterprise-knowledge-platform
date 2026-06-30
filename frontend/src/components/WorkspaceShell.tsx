@@ -19,12 +19,21 @@ import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
 import type {
+  ChatAskResponse,
   DocumentRecord,
   KnowledgeBaseStatus,
   KnowledgeChunk,
   User,
   Workspace
 } from '../types';
+
+interface ChatMessageView {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: KnowledgeChunk[];
+  modelName?: string;
+}
 
 interface WorkspaceShellProps {
   token: string;
@@ -73,6 +82,10 @@ export function WorkspaceShell({
   const [moduleLoading, setModuleLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState('');
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessageView[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [moduleError, setModuleError] = useState<string | null>(null);
 
@@ -89,6 +102,10 @@ export function WorkspaceShell({
     setSearchQuery('');
     setSearchResults([]);
     setSelectedFile(null);
+    setChatQuestion('');
+    setChatSessionId(null);
+    setChatMessages([]);
+    setChatLoading(false);
     setDeletingDocumentId(null);
     setModuleError(null);
     setActivePage('dashboard');
@@ -177,6 +194,43 @@ export function WorkspaceShell({
     setSearchResults([]);
   }
 
+  async function handleAskChat() {
+    const question = chatQuestion.trim();
+    if (!question) return;
+    const userMessage: ChatMessageView = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: question
+    };
+    try {
+      setChatLoading(true);
+      setModuleError(null);
+      setChatQuestion('');
+      setChatMessages((messages) => [...messages, userMessage]);
+      const response: ChatAskResponse = await api.askChat(
+        token,
+        workspace.id,
+        question,
+        chatSessionId
+      );
+      setChatSessionId(response.session.id);
+      setChatMessages((messages) => [
+        ...messages,
+        {
+          id: `assistant-${Date.now()}`,
+          role: 'assistant',
+          content: response.answer,
+          sources: response.sources,
+          modelName: response.model_name
+        }
+      ]);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '问答失败');
+    } finally {
+      setChatLoading(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -253,6 +307,16 @@ export function WorkspaceShell({
             onSearch={handleSearch}
             onClearSearch={handleClearSearch}
             onRefresh={loadWorkspaceModules}
+          />
+        ) : activePage === 'chat' ? (
+          <ChatPanel
+            currentNavLabel={currentNav.label}
+            messages={chatMessages}
+            question={chatQuestion}
+            loading={chatLoading}
+            error={moduleError}
+            onQuestionChange={setChatQuestion}
+            onAsk={handleAskChat}
           />
         ) : (
           <DefaultPanel
@@ -530,6 +594,84 @@ function KnowledgeChunkList({
         ))
       )}
     </div>
+  );
+}
+
+function ChatPanel({
+  currentNavLabel,
+  messages,
+  question,
+  loading,
+  error,
+  onQuestionChange,
+  onAsk
+}: {
+  currentNavLabel: string;
+  messages: ChatMessageView[];
+  question: string;
+  loading: boolean;
+  error: string | null;
+  onQuestionChange: (value: string) => void;
+  onAsk: () => void;
+}) {
+  return (
+    <section className="content-panel module-panel chat-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">{currentNavLabel}</p>
+          <h2>RAG 智能问答</h2>
+          <p>基于当前工作区知识片段回答问题，并返回引用来源。</p>
+        </div>
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="chat-thread" aria-live="polite">
+        {messages.length === 0 ? (
+          <div className="empty-row">上传并解析文档后，可以在这里提问。</div>
+        ) : (
+          messages.map((message) => (
+            <article className={`chat-message ${message.role}`} key={message.id}>
+              <div className="chat-bubble">
+                <strong>{message.role === 'user' ? '你' : '知识助手'}</strong>
+                {message.modelName && <span>{message.modelName}</span>}
+                <p>{message.content}</p>
+              </div>
+              {message.sources && message.sources.length > 0 && (
+                <div className="chat-sources">
+                  <span>来源</span>
+                  {message.sources.map((source) => (
+                    <article key={source.id}>
+                      <strong>{source.filename}</strong>
+                      <small>片段 #{source.chunk_index + 1} · 相关度 {source.score.toFixed(2)}</small>
+                      <p>{source.content}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </article>
+          ))
+        )}
+      </div>
+
+      <form
+        className="chat-composer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void onAsk();
+        }}
+      >
+        <textarea
+          value={question}
+          onChange={(event) => onQuestionChange(event.target.value)}
+          placeholder="输入要向当前工作区知识库提问的问题"
+        />
+        <button className="primary-action compact-action" type="submit" disabled={loading || !question.trim()}>
+          <Bot size={18} aria-hidden="true" />
+          {loading ? '生成中' : '提问'}
+        </button>
+      </form>
+    </section>
   );
 }
 

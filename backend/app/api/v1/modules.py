@@ -12,6 +12,8 @@ from app.models.entities import (
 )
 from app.schemas.modules import (
     AuditLogPublic,
+    ChatAskRequest,
+    ChatAskResponse,
     ChatSessionCreate,
     ChatSessionPublic,
     DocumentChunkPublic,
@@ -31,6 +33,7 @@ from app.services.document_service import (
     sync_knowledge_base_counts,
     upload_document_content,
 )
+from app.services.rag_chat_service import ask_workspace_question
 
 router = APIRouter(prefix="/workspaces/{workspace_id}", tags=["workspace-modules"])
 
@@ -211,6 +214,29 @@ def create_chat_session(
     db.commit()
     db.refresh(session)
     return session
+
+
+@router.post("/chat/ask", response_model=ChatAskResponse)
+def ask_chat(
+    workspace_id: str,
+    payload: ChatAskRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    result = ask_workspace_question(
+        db,
+        settings=settings,
+        user=current_user,
+        workspace_id=workspace_id,
+        question=payload.question,
+        session_id=payload.session_id,
+        top_k=payload.top_k,
+    )
+    db.commit()
+    db.refresh(result["session"])
+    return result
 
 
 @router.get("/settings", response_model=list[WorkspaceSettingPublic])

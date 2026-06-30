@@ -38,6 +38,16 @@ class Settings:
     )
     local_storage_root: str = os.getenv("LOCAL_STORAGE_ROOT", "storage/uploads")
     file_storage: str = os.getenv("FILE_STORAGE", "minio")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "deepseek")
+    llm_model: str = os.getenv("LLM_MODEL", "deepseek-v4-flash")
+    deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
+    deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    deepseek_model: str = os.getenv(
+        "DEEPSEEK_MODEL", os.getenv("LLM_MODEL", "deepseek-v4-flash")
+    )
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+    rag_top_k: int = int(os.getenv("RAG_TOP_K", "5"))
     rerank_model_path: str = os.getenv(
         "RERANK_MODEL_PATH", r"L:\RAG_系统\models"
     )
