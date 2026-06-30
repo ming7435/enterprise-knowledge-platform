@@ -26,6 +26,7 @@ from app.services.workspace_service import require_workspace_member, write_audit
 from app.api.deps import get_settings
 from app.core.config import Settings
 from app.services.document_service import (
+    delete_workspace_document,
     list_workspace_chunks,
     search_workspace_chunks,
     upload_document_content,
@@ -76,6 +77,25 @@ async def upload_document(
     db.commit()
     db.refresh(document)
     return document
+
+
+@router.delete("/documents/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_document(
+    workspace_id: str,
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    delete_workspace_document(
+        db,
+        settings=settings,
+        user=current_user,
+        workspace_id=workspace_id,
+        document_id=document_id,
+    )
+    db.commit()
 
 
 @router.post(

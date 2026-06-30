@@ -98,6 +98,7 @@ button {
 .auth-tabs button,
 .auth-methods button,
 .ghost-button,
+.icon-button,
 .sidebar-nav button,
 .workspace-card button,
 .secondary-action {
@@ -344,6 +345,23 @@ p {
   padding: 0 14px;
 }
 
+.icon-button {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+}
+
+.icon-button.danger {
+  color: #b42318;
+}
+
+.icon-button.danger:hover:not(:disabled) {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
 .content-panel {
   padding: 24px;
 }
@@ -428,7 +446,7 @@ p {
 .table-row,
 .empty-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) 80px 100px 100px 70px 150px;
+  grid-template-columns: minmax(180px, 1.5fr) 80px 100px 100px 70px 150px 60px;
   gap: 12px;
   align-items: center;
   min-height: 48px;

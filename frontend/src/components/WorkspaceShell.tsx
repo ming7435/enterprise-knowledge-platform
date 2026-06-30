@@ -10,6 +10,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Trash2,
   Upload,
   Users,
   Workflow
@@ -72,6 +73,7 @@ export function WorkspaceShell({
   const [moduleLoading, setModuleLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [moduleError, setModuleError] = useState<string | null>(null);
 
   const navItems =
@@ -87,6 +89,7 @@ export function WorkspaceShell({
     setSearchQuery('');
     setSearchResults([]);
     setSelectedFile(null);
+    setDeletingDocumentId(null);
     setModuleError(null);
     setActivePage('dashboard');
   }, [workspace.id]);
@@ -132,6 +135,22 @@ export function WorkspaceShell({
       setModuleError(err instanceof Error ? err.message : '文档上传失败');
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleDeleteDocument(document: DocumentRecord) {
+    const confirmed = window.confirm(`确认删除“${document.filename}”吗？对应知识片段也会同步移除。`);
+    if (!confirmed) return;
+    try {
+      setDeletingDocumentId(document.id);
+      setModuleError(null);
+      await api.deleteDocument(token, workspace.id, document.id);
+      setSearchResults([]);
+      await loadWorkspaceModules();
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '文档删除失败');
+    } finally {
+      setDeletingDocumentId(null);
     }
   }
 
@@ -212,9 +231,11 @@ export function WorkspaceShell({
             loading={moduleLoading}
             uploading={uploading}
             selectedFile={selectedFile}
+            deletingDocumentId={deletingDocumentId}
             error={moduleError}
             onFileChange={handleFileChange}
             onUpload={handleUpload}
+            onDelete={handleDeleteDocument}
             onRefresh={loadWorkspaceModules}
           />
         ) : activePage === 'knowledge' ? (
@@ -253,9 +274,11 @@ function DocumentsPanel({
   loading,
   uploading,
   selectedFile,
+  deletingDocumentId,
   error,
   onFileChange,
   onUpload,
+  onDelete,
   onRefresh
 }: {
   documents: DocumentRecord[];
@@ -263,9 +286,11 @@ function DocumentsPanel({
   loading: boolean;
   uploading: boolean;
   selectedFile: File | null;
+  deletingDocumentId: string | null;
   error: string | null;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onUpload: () => void;
+  onDelete: (document: DocumentRecord) => void;
   onRefresh: () => void;
 }) {
   return (
@@ -321,6 +346,7 @@ function DocumentsPanel({
           <span>入库</span>
           <span>片段</span>
           <span>上传时间</span>
+          <span>操作</span>
         </div>
         {documents.length === 0 ? (
           <div className="empty-row">当前工作区还没有文档。</div>
@@ -333,6 +359,16 @@ function DocumentsPanel({
               <StatusBadge value={document.index_status} kind="index" />
               <span>{document.chunk_count}</span>
               <span>{formatDate(document.created_at)}</span>
+              <button
+                className="icon-button danger"
+                type="button"
+                title="删除文档"
+                aria-label={`删除 ${document.filename}`}
+                disabled={deletingDocumentId === document.id}
+                onClick={() => onDelete(document)}
+              >
+                <Trash2 size={16} aria-hidden="true" />
+              </button>
             </div>
           ))
         )}

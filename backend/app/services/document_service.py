@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from fastapi import HTTPException, status
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -10,7 +11,12 @@ from app.services.document_processing_service import (
     extract_document_text,
     split_text_into_chunks,
 )
-from app.services.storage_service import create_document_storage, file_extension
+from app.services.storage_service import (
+    LocalDocumentStorage,
+    create_document_storage,
+    delete_document_file,
+    file_extension,
+)
 from app.services.workspace_service import write_audit_log
 
 
@@ -48,8 +54,8 @@ def upload_document_content(
     db.add(document)
     db.flush()
 
-    storage = create_document_storage(settings)
-    document.file_path = storage.save(
+    document.file_path = _save_document_with_fallback(
+        settings=settings,
         workspace_id=workspace_id,
         document_id=document.id,
         filename=filename,
@@ -101,6 +107,80 @@ def list_workspace_chunks(
         .limit(limit)
     ).scalars().all()
     return [_chunk_to_result(chunk, score=0.0) for chunk in chunks]
+
+
+def _save_document_with_fallback(
+    *,
+    settings: Settings,
+    workspace_id: str,
+    document_id: str,
+    filename: str,
+    content: bytes,
+    content_type: str | None,
+) -> str:
+    save_kwargs = {
+        "workspace_id": workspace_id,
+        "document_id": document_id,
+        "filename": filename,
+        "content": content,
+        "content_type": content_type,
+    }
+    try:
+        return create_document_storage(settings).save(**save_kwargs)
+    except Exception:
+        return LocalDocumentStorage(settings.local_storage_root).save(**save_kwargs)
+
+
+def delete_workspace_document(
+    db: Session,
+    *,
+    user: User,
+    workspace_id: str,
+    document_id: str,
+    settings: Settings | None = None,
+) -> Document:
+    document = db.execute(
+        select(Document).where(
+            Document.id == document_id,
+            Document.workspace_id == workspace_id,
+        )
+    ).scalar_one_or_none()
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文档不存在或不属于当前工作区",
+        )
+
+    chunks = db.execute(
+        select(DocumentChunk).where(DocumentChunk.document_id == document.id)
+    ).scalars().all()
+    removed_chunks = len(chunks)
+    knowledge_base = _get_knowledge_base(db, workspace_id)
+
+    db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
+    db.delete(document)
+
+    knowledge_base.document_count = max(0, knowledge_base.document_count - 1)
+    knowledge_base.chunk_count = max(0, knowledge_base.chunk_count - removed_chunks)
+    knowledge_base.status = _knowledge_status_after_delete(knowledge_base)
+
+    if settings is not None:
+        delete_document_file(settings, document.file_path)
+
+    write_audit_log(
+        db,
+        action="document.deleted",
+        user_id=user.id,
+        workspace_id=workspace_id,
+        target_type="document",
+        target_id=document.id,
+        detail={
+            "filename": document.filename,
+            "removed_chunks": removed_chunks,
+        },
+    )
+    db.flush()
+    return document
 
 
 def search_workspace_chunks(
@@ -215,6 +295,14 @@ def _get_knowledge_base(db: Session, workspace_id: str) -> KnowledgeBase:
     return db.execute(
         select(KnowledgeBase).where(KnowledgeBase.workspace_id == workspace_id)
     ).scalar_one()
+
+
+def _knowledge_status_after_delete(knowledge_base: KnowledgeBase) -> str:
+    if knowledge_base.document_count == 0:
+        return "empty"
+    if knowledge_base.chunk_count > 0:
+        return "ready"
+    return "documents_uploaded"
 
 
 def _score_chunk(content: str, query: str, terms: list[str]) -> float:
