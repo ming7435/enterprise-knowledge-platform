@@ -173,10 +173,11 @@ def list_workspace_members(
     user: User,
     workspace_id: str,
 ) -> list[dict]:
-    workspace, _membership = require_workspace_member(
+    workspace, _membership = require_workspace_role(
         db,
         user=user,
         workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_MANAGE_ROLES,
     )
     _require_enterprise_workspace(workspace)
     rows = db.execute(
