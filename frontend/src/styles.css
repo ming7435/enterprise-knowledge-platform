@@ -55,6 +55,16 @@ button {
   align-self: center;
 }
 
+.auth-logo {
+  width: 104px;
+  height: 104px;
+  margin-bottom: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 18px;
+  object-fit: cover;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
+}
+
 .auth-copy h1 {
   margin: 8px 0 16px;
   font-size: 48px;
@@ -371,6 +381,15 @@ p {
   margin-bottom: 32px;
 }
 
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  object-fit: cover;
+}
+
 .brand-block span {
   display: block;
   color: #cbd5e1;
@@ -562,13 +581,20 @@ p {
 .status-badge.uploaded,
 .status-badge.documents_uploaded,
 .status-badge.ready,
+.status-badge.configured,
+.status-badge.milvus-configured,
+.status-badge.faiss-ready,
+.status-badge.milvus-ready,
+.status-badge.neo4j-ready,
+.status-badge.sqlite-ready,
 .status-badge.parsed,
 .status-badge.indexed {
   background: #ecfdf5;
   color: #0f766e;
 }
 
-.status-badge.pending {
+.status-badge.pending,
+.status-badge.missing {
   background: #fffbeb;
   color: #92400e;
 }
@@ -853,6 +879,173 @@ p {
   color: #334155;
 }
 
+.advanced-panel {
+  gap: 20px;
+}
+
+.advanced-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.advanced-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.85fr);
+  gap: 16px;
+}
+
+.advanced-grid.secondary {
+  grid-template-columns: minmax(320px, 0.75fr) minmax(0, 1fr);
+}
+
+.advanced-section {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.section-title {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.section-title svg {
+  color: #0f766e;
+}
+
+.section-title h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.section-title span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.graph-board {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 158px;
+  align-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    linear-gradient(90deg, rgba(15, 118, 110, 0.06) 1px, transparent 1px),
+    linear-gradient(rgba(15, 118, 110, 0.06) 1px, transparent 1px),
+    #f8fafc;
+  background-size: 24px 24px;
+}
+
+.graph-node {
+  display: inline-flex;
+  max-width: 220px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 7px 12px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.graph-node.workspace {
+  background: #ccfbf1;
+  color: #0f766e;
+}
+
+.graph-node.document {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.graph-node.concept {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.graph-relations,
+.tool-grid,
+.notification-list,
+.deployment-list {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-relations {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.graph-relations article,
+.tool-card,
+.notification-list article,
+.deployment-list article {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.graph-relations span,
+.tool-card p,
+.notification-list p,
+.deployment-list p {
+  margin: 0;
+  color: #64748b;
+}
+
+.tool-card div,
+.notification-list article div,
+.deployment-list article div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tool-card code,
+.deployment-list code {
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+}
+
+.notification-list span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.advanced-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #f8fafc;
+}
+
+.advanced-health span:last-child {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -883,7 +1076,11 @@ p {
   .workspace-grid,
   .app-shell,
   .metric-grid,
-  .knowledge-grid {
+  .knowledge-grid,
+  .advanced-metrics,
+  .advanced-grid,
+  .advanced-grid.secondary,
+  .graph-relations {
     grid-template-columns: 1fr;
   }
 

@@ -1,30 +1,39 @@
 import {
   ArrowLeftRight,
+  BarChart3,
+  Bell,
   Bot,
-  Building2,
   Database,
   FileText,
   Home,
   LogOut,
+  Network,
   RefreshCw,
   Search,
+  Server,
   Settings,
   ShieldCheck,
   Trash2,
   Upload,
   UserPlus,
   Users,
+  Wrench,
   Workflow
 } from 'lucide-react';
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
 import type {
+  AdvancedNotification,
+  AdvancedOverview,
   AuditLogRecord,
   ChatAskResponse,
+  DeploymentStatus,
   DocumentRecord,
+  KnowledgeGraph,
   KnowledgeBaseStatus,
   KnowledgeChunk,
+  ToolStatus,
   User,
   Workspace,
   WorkspaceMember,
@@ -53,6 +62,7 @@ type PageKey =
   | 'knowledge'
   | 'chat'
   | 'settings'
+  | 'advanced'
   | 'members'
   | 'audit';
 
@@ -61,7 +71,8 @@ const baseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
   { key: 'documents', label: '文档', icon: FileText },
   { key: 'knowledge', label: '知识库', icon: Workflow },
   { key: 'chat', label: '问答', icon: Bot },
-  { key: 'settings', label: '设置', icon: Settings }
+  { key: 'settings', label: '设置', icon: Settings },
+  { key: 'advanced', label: '高级', icon: BarChart3 }
 ];
 
 const enterpriseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
@@ -88,6 +99,11 @@ export function WorkspaceShell({
   const [knowledgeChunks, setKnowledgeChunks] = useState<KnowledgeChunk[]>([]);
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
+  const [advancedOverview, setAdvancedOverview] = useState<AdvancedOverview | null>(null);
+  const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraph | null>(null);
+  const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([]);
+  const [advancedNotifications, setAdvancedNotifications] = useState<AdvancedNotification[]>([]);
+  const [deploymentStatuses, setDeploymentStatuses] = useState<DeploymentStatus[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<KnowledgeChunk[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -119,6 +135,11 @@ export function WorkspaceShell({
     setKnowledgeChunks([]);
     setMembers([]);
     setAuditLogs([]);
+    setAdvancedOverview(null);
+    setKnowledgeGraph(null);
+    setToolStatuses([]);
+    setAdvancedNotifications([]);
+    setDeploymentStatuses([]);
     setSearchQuery('');
     setSearchResults([]);
     setSelectedFile(null);
@@ -147,6 +168,12 @@ export function WorkspaceShell({
     }
     if (activePage === 'audit') {
       void loadAuditLogs();
+    }
+  }, [activePage, workspace.id]);
+
+  useEffect(() => {
+    if (activePage === 'advanced') {
+      void loadAdvancedDashboard();
     }
   }, [activePage, workspace.id]);
 
@@ -253,6 +280,29 @@ export function WorkspaceShell({
     }
   }
 
+  async function loadAdvancedDashboard() {
+    try {
+      setModuleLoading(true);
+      setModuleError(null);
+      const [overview, graph, tools, notifications, deployment] = await Promise.all([
+        api.advancedOverview(token, workspace.id),
+        api.knowledgeGraph(token, workspace.id),
+        api.toolCenter(token, workspace.id),
+        api.advancedNotifications(token, workspace.id),
+        api.deploymentStatus(token, workspace.id)
+      ]);
+      setAdvancedOverview(overview);
+      setKnowledgeGraph(graph);
+      setToolStatuses(tools);
+      setAdvancedNotifications(notifications);
+      setDeploymentStatuses(deployment);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '高级驾驶舱加载失败');
+    } finally {
+      setModuleLoading(false);
+    }
+  }
+
   async function handleAddMember() {
     const email = memberEmail.trim();
     if (!email) return;
@@ -352,7 +402,7 @@ export function WorkspaceShell({
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
-          <Building2 size={24} aria-hidden="true" />
+          <img className="brand-logo" src="/qizhiyun-logo.png" alt="企知云" />
           <div>
             <strong>企业知识平台</strong>
             <span>{workspace.type === 'enterprise' ? '企业空间' : '个人空间'}</span>
@@ -464,6 +514,18 @@ export function WorkspaceShell({
             loading={moduleLoading}
             error={moduleError}
             onRefresh={loadAuditLogs}
+          />
+        ) : activePage === 'advanced' ? (
+          <AdvancedPanel
+            currentNavLabel={currentNav.label}
+            overview={advancedOverview}
+            graph={knowledgeGraph}
+            tools={toolStatuses}
+            notifications={advancedNotifications}
+            deployment={deploymentStatuses}
+            loading={moduleLoading}
+            error={moduleError}
+            onRefresh={loadAdvancedDashboard}
           />
         ) : (
           <DefaultPanel
@@ -1043,6 +1105,184 @@ function AuditPanel({
   );
 }
 
+function AdvancedPanel({
+  currentNavLabel,
+  overview,
+  graph,
+  tools,
+  notifications,
+  deployment,
+  loading,
+  error,
+  onRefresh
+}: {
+  currentNavLabel: string;
+  overview: AdvancedOverview | null;
+  graph: KnowledgeGraph | null;
+  tools: ToolStatus[];
+  notifications: AdvancedNotification[];
+  deployment: DeploymentStatus[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  const graphNodes = graph?.nodes ?? [];
+  const graphEdges = graph?.edges ?? [];
+  const conceptCount = graphNodes.filter((node) => node.type === 'concept').length;
+
+  return (
+    <section className="content-panel module-panel advanced-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">{currentNavLabel}</p>
+          <h2>V5 高级驾驶舱</h2>
+          <p>集中查看知识资产、图谱预览、工具接入、通知动态和私有化部署状态。</p>
+        </div>
+        <button className="ghost-button" onClick={onRefresh} disabled={loading}>
+          <RefreshCw size={18} aria-hidden="true" />
+          刷新
+        </button>
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="knowledge-grid advanced-metrics">
+        <MetricCard
+          label="文档数量"
+          value={String(overview?.document_count ?? 0)}
+          icon={FileText}
+        />
+        <MetricCard
+          label="知识片段"
+          value={String(overview?.chunk_count ?? 0)}
+          icon={Workflow}
+        />
+        <MetricCard
+          label="成员数量"
+          value={String(overview?.member_count ?? 0)}
+          icon={Users}
+        />
+        <MetricCard
+          label="审计事件"
+          value={String(overview?.audit_log_count ?? 0)}
+          icon={ShieldCheck}
+        />
+      </div>
+
+      <div className="advanced-grid">
+        <section className="advanced-section graph-section">
+          <div className="section-title">
+            <Network size={20} aria-hidden="true" />
+            <div>
+              <h3>知识图谱预览</h3>
+              <span>
+                {graphNodes.length} 个节点 / {graphEdges.length} 条关系 / {conceptCount} 个概念
+              </span>
+            </div>
+          </div>
+          <div className="graph-board" aria-label="知识图谱节点">
+            {graphNodes.slice(0, 12).map((node) => (
+              <span className={`graph-node ${node.type}`} key={node.id}>
+                {node.label}
+              </span>
+            ))}
+            {graphNodes.length === 0 && <div className="empty-row">暂无图谱节点。</div>}
+          </div>
+          <div className="graph-relations">
+            {graphEdges.slice(0, 6).map((edge) => (
+              <article key={edge.id}>
+                <strong>{edge.label}</strong>
+                <span>{edge.source.replace(/^[^:]+:/, '')} → {edge.target.replace(/^[^:]+:/, '')}</span>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section className="advanced-section">
+          <div className="section-title">
+            <Wrench size={20} aria-hidden="true" />
+            <div>
+              <h3>工具中心</h3>
+              <span>Milvus、Neo4j、Rerank、MinIO、n8n 等接入状态</span>
+            </div>
+          </div>
+          <div className="tool-grid">
+            {tools.map((tool) => (
+              <article className="tool-card" key={tool.key}>
+                <div>
+                  <strong>{tool.label}</strong>
+                  <StatusBadge value={tool.status} />
+                </div>
+                <p>{tool.description}</p>
+                {tool.endpoint && <code>{tool.endpoint}</code>}
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="advanced-grid secondary">
+        <section className="advanced-section">
+          <div className="section-title">
+            <Bell size={20} aria-hidden="true" />
+            <div>
+              <h3>通知中心</h3>
+              <span>最近工作区动态</span>
+            </div>
+          </div>
+          <div className="notification-list">
+            {notifications.length === 0 ? (
+              <div className="empty-row">暂无通知动态。</div>
+            ) : (
+              notifications.slice(0, 8).map((item) => (
+                <article key={item.id}>
+                  <div>
+                    <strong>{item.title}</strong>
+                    <span>{formatDate(item.created_at)}</span>
+                  </div>
+                  <p>{item.message}</p>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="advanced-section">
+          <div className="section-title">
+            <Server size={20} aria-hidden="true" />
+            <div>
+              <h3>部署状态</h3>
+              <span>只展示运行状态，不展示账号、密码和密钥</span>
+            </div>
+          </div>
+          <div className="deployment-list">
+            {deployment.map((item) => (
+              <article key={item.key}>
+                <div>
+                  <strong>{item.label}</strong>
+                  <StatusBadge value={item.status} />
+                </div>
+                <code>{item.value}</code>
+                <p>{item.description}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <div className="advanced-health">
+        <StatusBadge value={overview?.vector_status ?? 'pending'} />
+        <StatusBadge value={overview?.graph_status ?? 'pending'} />
+        <StatusBadge value={overview?.rerank_status ?? 'pending'} />
+        <span>
+          最近活动：
+          {overview?.latest_activity_at ? formatDate(overview.latest_activity_at) : '暂无'}
+        </span>
+      </div>
+    </section>
+  );
+}
+
 function DefaultPanel({
   activePage,
   workspace,
@@ -1113,6 +1353,13 @@ function statusText(value: string, kind: StatusBadgeKind = 'default') {
       empty: '空',
       documents_uploaded: '已上传文档',
       ready: '可检索',
+      configured: '已配置',
+      missing: '待配置',
+      'milvus-configured': 'Milvus 已配置',
+      'faiss-ready': 'FAISS 就绪',
+      'milvus-ready': 'Milvus 就绪',
+      'neo4j-ready': 'Neo4j 就绪',
+      'sqlite-ready': 'SQLite 就绪',
       uploaded: '已上传',
       pending: '待处理',
       parsing: '解析中',
@@ -1184,6 +1431,7 @@ function pageTitle(page: PageKey, type: Workspace['type']) {
     knowledge: type === 'enterprise' ? '企业知识库' : '个人知识库',
     chat: type === 'enterprise' ? '企业智能问答' : '个人智能问答',
     settings: type === 'enterprise' ? '企业设置' : '个人设置',
+    advanced: 'V5 高级驾驶舱',
     members: '企业用户权限',
     audit: '企业操作记录'
   };
@@ -1197,6 +1445,7 @@ function pageDescription(page: PageKey, type: Workspace['type']) {
     knowledge: '查看知识库状态、文档来源和后续入库进度。',
     chat: 'V3 接入普通对话、RAG 问答和来源追溯。',
     settings: '管理模型、向量库、Webhook、存储等工作区级配置。',
+    advanced: 'V5 汇总知识资产、知识图谱、工具中心、通知中心和部署状态。',
     members: 'V4 将实现邀请成员、移除成员、角色权限和文档权限。',
     audit: '记录登录、文档、知识库、问答、工具、设置和权限操作。'
   };

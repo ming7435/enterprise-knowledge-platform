@@ -82,6 +82,63 @@ export interface AuditLogRecord {
   created_at: string;
 }
 
+export interface AdvancedOverview {
+  workspace_id: string;
+  document_count: number;
+  chunk_count: number;
+  member_count: number;
+  audit_log_count: number;
+  vector_status: string;
+  graph_status: string;
+  rerank_status: string;
+  latest_activity_at?: string | null;
+}
+
+export interface KnowledgeGraphNode {
+  id: string;
+  label: string;
+  type: 'workspace' | 'document' | 'concept' | string;
+  weight: number;
+}
+
+export interface KnowledgeGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label: string;
+  weight: number;
+}
+
+export interface KnowledgeGraph {
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+}
+
+export interface ToolStatus {
+  key: string;
+  label: string;
+  status: string;
+  description: string;
+  endpoint?: string | null;
+}
+
+export interface AdvancedNotification {
+  id: string;
+  action: string;
+  title: string;
+  message: string;
+  level: string;
+  created_at: string;
+}
+
+export interface DeploymentStatus {
+  key: string;
+  label: string;
+  status: string;
+  value: string;
+  description: string;
+}
+
 export interface LoginInput {
   email: string;
   password: string;

@@ -106,3 +106,60 @@ class AuditLogPublic(BaseModel):
     target_id: str | None
     detail: dict
     created_at: datetime
+
+
+class AdvancedOverviewPublic(BaseModel):
+    workspace_id: str
+    document_count: int
+    chunk_count: int
+    member_count: int
+    audit_log_count: int
+    vector_status: str
+    graph_status: str
+    rerank_status: str
+    latest_activity_at: datetime | None = None
+
+
+class KnowledgeGraphNodePublic(BaseModel):
+    id: str
+    label: str
+    type: str
+    weight: int = 1
+
+
+class KnowledgeGraphEdgePublic(BaseModel):
+    id: str
+    source: str
+    target: str
+    label: str
+    weight: int = 1
+
+
+class KnowledgeGraphPublic(BaseModel):
+    nodes: list[KnowledgeGraphNodePublic]
+    edges: list[KnowledgeGraphEdgePublic]
+
+
+class ToolStatusPublic(BaseModel):
+    key: str
+    label: str
+    status: str
+    description: str
+    endpoint: str | None = None
+
+
+class AdvancedNotificationPublic(BaseModel):
+    id: str
+    action: str
+    title: str
+    message: str
+    level: str
+    created_at: datetime
+
+
+class DeploymentStatusPublic(BaseModel):
+    key: str
+    label: str
+    status: str
+    value: str
+    description: str

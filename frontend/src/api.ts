@@ -1,14 +1,19 @@
 import type {
+  AdvancedNotification,
+  AdvancedOverview,
   AuditLogRecord,
   ChatAskResponse,
+  DeploymentStatus,
   DocumentRecord,
   EmailCodeLoginInput,
   EmailCodePurpose,
+  KnowledgeGraph,
   KnowledgeChunk,
   KnowledgeBaseStatus,
   LoginInput,
   RegisterInput,
   ResetPasswordInput,
+  ToolStatus,
   User,
   Workspace,
   WorkspaceMember,
@@ -244,6 +249,41 @@ export const api = {
       {
         method: 'DELETE'
       },
+      token
+    );
+  },
+  advancedOverview(token: string, workspaceId: string) {
+    return request<AdvancedOverview>(
+      `/api/v1/workspaces/${workspaceId}/advanced/overview`,
+      {},
+      token
+    );
+  },
+  knowledgeGraph(token: string, workspaceId: string) {
+    return request<KnowledgeGraph>(
+      `/api/v1/workspaces/${workspaceId}/advanced/knowledge-graph`,
+      {},
+      token
+    );
+  },
+  toolCenter(token: string, workspaceId: string) {
+    return request<ToolStatus[]>(
+      `/api/v1/workspaces/${workspaceId}/advanced/tool-center`,
+      {},
+      token
+    );
+  },
+  advancedNotifications(token: string, workspaceId: string) {
+    return request<AdvancedNotification[]>(
+      `/api/v1/workspaces/${workspaceId}/advanced/notifications`,
+      {},
+      token
+    );
+  },
+  deploymentStatus(token: string, workspaceId: string) {
+    return request<DeploymentStatus[]>(
+      `/api/v1/workspaces/${workspaceId}/advanced/deployment`,
+      {},
       token
     );
   }
