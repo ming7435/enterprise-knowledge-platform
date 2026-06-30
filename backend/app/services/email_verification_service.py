@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.models.entities import EmailVerificationCode, utc_now
 
 
-VALID_PURPOSES = {"login", "register"}
+VALID_PURPOSES = {"login", "register", "reset_password"}
 
 
 def normalize_email(email: str) -> str:
@@ -42,7 +42,12 @@ class SmtpVerificationEmailSender(VerificationEmailSender):
         if not self.settings.smtp_username or not self.settings.smtp_password:
             raise RuntimeError("SMTP 未配置，请先在本地 .env 填写邮箱账号和授权码")
 
-        action = "注册" if purpose == "register" else "登录"
+        action_map = {
+            "register": "注册",
+            "login": "登录",
+            "reset_password": "重置密码",
+        }
+        action = action_map.get(purpose, "登录")
         message = EmailMessage()
         message["Subject"] = f"企业知识平台{action}验证码"
         message["From"] = formataddr(

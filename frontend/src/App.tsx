@@ -9,6 +9,7 @@ import type {
   EmailCodePurpose,
   LoginInput,
   RegisterInput,
+  ResetPasswordInput,
   User,
   Workspace
 } from './types';
@@ -98,6 +99,21 @@ export default function App() {
     }
   }
 
+  async function handleResetPassword(input: ResetPasswordInput) {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.resetPassword(input);
+      setMode('login');
+      return response.message;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '密码重置失败');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleCreateEnterprise(name: string, description: string) {
     if (!token) return;
     try {
@@ -132,6 +148,7 @@ export default function App() {
         onLogin={handleLogin}
         onEmailCodeLogin={handleEmailCodeLogin}
         onRegister={handleRegister}
+        onResetPassword={handleResetPassword}
         onSendEmailCode={handleSendEmailCode}
       />
     );

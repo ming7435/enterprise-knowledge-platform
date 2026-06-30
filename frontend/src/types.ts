@@ -58,4 +58,10 @@ export interface RegisterInput extends LoginInput {
   verification_code: string;
 }
 
-export type EmailCodePurpose = 'login' | 'register';
+export interface ResetPasswordInput {
+  email: string;
+  verification_code: string;
+  new_password: string;
+}
+
+export type EmailCodePurpose = 'login' | 'register' | 'reset_password';

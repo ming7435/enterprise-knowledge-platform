@@ -15,10 +15,11 @@ import type {
   EmailCodeLoginInput,
   EmailCodePurpose,
   LoginInput,
-  RegisterInput
+  RegisterInput,
+  ResetPasswordInput
 } from '../types';
 
-type AuthMethod = 'password' | 'emailCode';
+type AuthMethod = 'password' | 'emailCode' | 'forgotPassword';
 
 interface AuthFormsProps {
   mode: 'login' | 'register';
@@ -28,6 +29,7 @@ interface AuthFormsProps {
   onLogin: (input: LoginInput) => Promise<void> | void;
   onEmailCodeLogin: (input: EmailCodeLoginInput) => Promise<void> | void;
   onRegister: (input: RegisterInput) => Promise<void> | void;
+  onResetPassword: (input: ResetPasswordInput) => Promise<string> | string;
   onSendEmailCode: (
     email: string,
     purpose: EmailCodePurpose
@@ -50,6 +52,7 @@ export function AuthForms({
   onLogin,
   onEmailCodeLogin,
   onRegister,
+  onResetPassword,
   onSendEmailCode
 }: AuthFormsProps) {
   const [authMethod, setAuthMethod] = useState<AuthMethod>('password');
@@ -60,12 +63,15 @@ export function AuthForms({
   const [verificationCode, setVerificationCode] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [codeMessage, setCodeMessage] = useState<string | null>(null);
+  const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [codeSending, setCodeSending] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
   const isRegister = mode === 'register';
-  const needsVerificationCode = isRegister || authMethod === 'emailCode';
+  const isResetPassword = !isRegister && authMethod === 'forgotPassword';
+  const needsVerificationCode = isRegister || authMethod === 'emailCode' || isResetPassword;
   const needsPassword = isRegister || authMethod === 'password';
+  const passwordLabel = isResetPassword ? '新密码' : '密码';
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -81,6 +87,16 @@ export function AuthForms({
     setVerificationCode('');
   }, [mode, authMethod]);
 
+  useEffect(() => {
+    setFormSuccess(null);
+  }, [mode]);
+
+  function changeMode(nextMode: 'login' | 'register') {
+    setAuthMethod('password');
+    setFormSuccess(null);
+    onModeChange(nextMode);
+  }
+
   function validateEmailOnly() {
     if (!email.trim()) {
       setErrors({ email: '请输入邮箱' });
@@ -95,7 +111,12 @@ export function AuthForms({
     try {
       setCodeSending(true);
       setCodeMessage(null);
-      const purpose: EmailCodePurpose = isRegister ? 'register' : 'login';
+      setFormSuccess(null);
+      const purpose: EmailCodePurpose = isRegister
+        ? 'register'
+        : isResetPassword
+          ? 'reset_password'
+          : 'login';
       const message = await onSendEmailCode(email, purpose);
       setCodeMessage(message);
       setCooldown(60);
@@ -113,11 +134,12 @@ export function AuthForms({
     const nextErrors: FormErrors = {};
     if (!email.trim()) nextErrors.email = '请输入邮箱';
     if (isRegister && !username.trim()) nextErrors.username = '请输入用户名';
-    if (needsPassword && !password.trim()) nextErrors.password = '请输入密码';
+    if ((needsPassword || isResetPassword) && !password.trim()) nextErrors.password = '请输入密码';
     if (needsVerificationCode && !verificationCode.trim()) {
       nextErrors.verification_code = '请输入邮箱验证码';
     }
     setErrors(nextErrors);
+    setFormSuccess(null);
     if (Object.keys(nextErrors).length > 0) return;
 
     if (isRegister) {
@@ -132,6 +154,19 @@ export function AuthForms({
 
     if (authMethod === 'emailCode') {
       await onEmailCodeLogin({ email, verification_code: verificationCode });
+      return;
+    }
+
+    if (isResetPassword) {
+      const message = await onResetPassword({
+        email,
+        verification_code: verificationCode,
+        new_password: password
+      });
+      setPassword('');
+      setVerificationCode('');
+      setAuthMethod('password');
+      setFormSuccess(message);
       return;
     }
 
@@ -153,7 +188,7 @@ export function AuthForms({
               type="button"
               aria-label="切换到登录"
               className={mode === 'login' ? 'active' : ''}
-              onClick={() => onModeChange('login')}
+              onClick={() => changeMode('login')}
             >
               登录
             </button>
@@ -161,18 +196,21 @@ export function AuthForms({
               type="button"
               aria-label="切换到注册"
               className={mode === 'register' ? 'active' : ''}
-              onClick={() => onModeChange('register')}
+              onClick={() => changeMode('register')}
             >
               注册
             </button>
           </div>
 
-          {!isRegister && (
+          {!isRegister && !isResetPassword && (
             <div className="auth-methods" aria-label="登录方式">
               <button
                 type="button"
                 className={authMethod === 'password' ? 'active' : ''}
-                onClick={() => setAuthMethod('password')}
+                onClick={() => {
+                  setFormSuccess(null);
+                  setAuthMethod('password');
+                }}
               >
                 <Lock size={16} aria-hidden="true" />
                 密码
@@ -180,12 +218,25 @@ export function AuthForms({
               <button
                 type="button"
                 className={authMethod === 'emailCode' ? 'active' : ''}
-                onClick={() => setAuthMethod('emailCode')}
+                onClick={() => {
+                  setFormSuccess(null);
+                  setAuthMethod('emailCode');
+                }}
               >
                 <KeyRound size={16} aria-hidden="true" />
                 验证码
               </button>
             </div>
+          )}
+
+          {isResetPassword && (
+            <button
+              className="link-action mode-return"
+              type="button"
+              onClick={() => setAuthMethod('password')}
+            >
+              返回登录
+            </button>
           )}
 
           {isRegister && (
@@ -250,9 +301,9 @@ export function AuthForms({
             </label>
           )}
 
-          {needsPassword && (
+          {(needsPassword || isResetPassword) && (
             <label>
-              <span>密码</span>
+              <span>{passwordLabel}</span>
               <div className="input-row">
                 <Lock size={18} aria-hidden="true" />
                 <input
@@ -260,7 +311,7 @@ export function AuthForms({
                   type={showPassword ? 'text' : 'password'}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="至少 8 位"
-                  autoComplete={isRegister ? 'new-password' : 'current-password'}
+                  autoComplete={isRegister || isResetPassword ? 'new-password' : 'current-password'}
                 />
                 <button
                   type="button"
@@ -277,15 +328,30 @@ export function AuthForms({
                 </button>
               </div>
               {errors.password && <small>{errors.password}</small>}
+              {!isRegister && authMethod === 'password' && (
+                <button
+                  className="link-action"
+                  type="button"
+                  onClick={() => {
+                    setFormSuccess(null);
+                    setAuthMethod('forgotPassword');
+                  }}
+                >
+                  忘记密码？
+                </button>
+              )}
             </label>
           )}
 
           {error && <p className="form-error">{error}</p>}
+          {formSuccess && <p className="form-success">{formSuccess}</p>}
 
           <button className="primary-action" type="submit" disabled={loading}>
             <LogIn size={18} aria-hidden="true" />
             {isRegister
               ? '注册并进入'
+              : isResetPassword
+                ? '重置密码'
               : authMethod === 'emailCode'
                 ? '验证码登录'
                 : '登录'}
