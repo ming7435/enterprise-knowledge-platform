@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -210,6 +210,25 @@ def search_workspace_chunks(
 
     scored.sort(key=lambda item: item.score, reverse=True)
     return scored[:limit]
+
+
+def sync_knowledge_base_counts(db: Session, *, workspace_id: str) -> KnowledgeBase:
+    knowledge_base = _get_knowledge_base(db, workspace_id)
+    document_count = db.execute(
+        select(func.count())
+        .select_from(Document)
+        .where(Document.workspace_id == workspace_id)
+    ).scalar_one()
+    chunk_count = db.execute(
+        select(func.count())
+        .select_from(DocumentChunk)
+        .where(DocumentChunk.workspace_id == workspace_id)
+    ).scalar_one()
+    knowledge_base.document_count = int(document_count)
+    knowledge_base.chunk_count = int(chunk_count)
+    knowledge_base.status = _knowledge_status_after_delete(knowledge_base)
+    db.flush()
+    return knowledge_base
 
 
 def _parse_and_index_document(
