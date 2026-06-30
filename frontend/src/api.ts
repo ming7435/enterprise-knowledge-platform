@@ -1,4 +1,5 @@
 import type {
+  AuditLogRecord,
   ChatAskResponse,
   DocumentRecord,
   EmailCodeLoginInput,
@@ -9,7 +10,9 @@ import type {
   RegisterInput,
   ResetPasswordInput,
   User,
-  Workspace
+  Workspace,
+  WorkspaceMember,
+  WorkspaceRole
 } from './types';
 
 export const API_BASE_URL =
@@ -111,6 +114,68 @@ export const api = {
       {
         method: 'DELETE'
       },
+      token
+    );
+  },
+  workspaceMembers(token: string, workspaceId: string) {
+    return request<WorkspaceMember[]>(
+      `/api/v1/workspaces/${workspaceId}/members`,
+      {},
+      token
+    );
+  },
+  addWorkspaceMember(
+    token: string,
+    workspaceId: string,
+    email: string,
+    role: WorkspaceRole,
+    department?: string
+  ) {
+    return request<WorkspaceMember>(
+      `/api/v1/workspaces/${workspaceId}/members`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          email,
+          role,
+          department: department?.trim() || null
+        })
+      },
+      token
+    );
+  },
+  updateWorkspaceMember(
+    token: string,
+    workspaceId: string,
+    memberId: string,
+    role: WorkspaceRole,
+    department?: string | null
+  ) {
+    return request<WorkspaceMember>(
+      `/api/v1/workspaces/${workspaceId}/members/${memberId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          role,
+          department: department?.trim() || null
+        })
+      },
+      token
+    );
+  },
+  removeWorkspaceMember(token: string, workspaceId: string, memberId: string) {
+    return request<void>(
+      `/api/v1/workspaces/${workspaceId}/members/${memberId}`,
+      {
+        method: 'DELETE'
+      },
+      token
+    );
+  },
+  auditLogs(token: string, workspaceId: string) {
+    return request<AuditLogRecord[]>(
+      `/api/v1/workspaces/${workspaceId}/audit-logs`,
+      {},
       token
     );
   },

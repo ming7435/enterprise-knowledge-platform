@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Trash2,
   Upload,
+  UserPlus,
   Users,
   Workflow
 } from 'lucide-react';
@@ -19,12 +20,15 @@ import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
 import type {
+  AuditLogRecord,
   ChatAskResponse,
   DocumentRecord,
   KnowledgeBaseStatus,
   KnowledgeChunk,
   User,
-  Workspace
+  Workspace,
+  WorkspaceMember,
+  WorkspaceRole
 } from '../types';
 
 interface ChatMessageView {
@@ -65,6 +69,12 @@ const enterpriseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> =
   { key: 'audit', label: '审计日志', icon: ShieldCheck }
 ];
 
+const memberRoleOptions: Array<{ value: WorkspaceRole; label: string }> = [
+  { value: 'admin', label: '管理员' },
+  { value: 'member', label: '成员' },
+  { value: 'viewer', label: '只读' }
+];
+
 export function WorkspaceShell({
   token,
   user,
@@ -76,17 +86,24 @@ export function WorkspaceShell({
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeBaseStatus | null>(null);
   const [knowledgeChunks, setKnowledgeChunks] = useState<KnowledgeChunk[]>([]);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<KnowledgeChunk[]>([]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [memberEmail, setMemberEmail] = useState('');
+  const [memberDepartment, setMemberDepartment] = useState('');
+  const [memberRole, setMemberRole] = useState<WorkspaceRole>('member');
   const [moduleLoading, setModuleLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [memberSaving, setMemberSaving] = useState(false);
   const [chatQuestion, setChatQuestion] = useState('');
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessageView[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [memberActionId, setMemberActionId] = useState<string | null>(null);
   const [moduleError, setModuleError] = useState<string | null>(null);
 
   const navItems =
@@ -94,19 +111,26 @@ export function WorkspaceShell({
   const currentNav = navItems.find((item) => item.key === activePage) ?? navItems[0];
   const workspaceLabel = workspace.type === 'enterprise' ? '企业工作区' : '个人工作区';
   const latestDocuments = useMemo(() => documents.slice(0, 3), [documents]);
+  const canManageMembers = workspace.role === 'owner' || workspace.role === 'admin';
 
   useEffect(() => {
     setDocuments([]);
     setKnowledgeBase(null);
     setKnowledgeChunks([]);
+    setMembers([]);
+    setAuditLogs([]);
     setSearchQuery('');
     setSearchResults([]);
     setSelectedFile(null);
+    setMemberEmail('');
+    setMemberDepartment('');
+    setMemberRole('member');
     setChatQuestion('');
     setChatSessionId(null);
     setChatMessages([]);
     setChatLoading(false);
     setDeletingDocumentId(null);
+    setMemberActionId(null);
     setModuleError(null);
     setActivePage('dashboard');
   }, [workspace.id]);
@@ -114,6 +138,15 @@ export function WorkspaceShell({
   useEffect(() => {
     if (activePage === 'documents' || activePage === 'knowledge' || activePage === 'dashboard') {
       void loadWorkspaceModules();
+    }
+  }, [activePage, workspace.id]);
+
+  useEffect(() => {
+    if (activePage === 'members') {
+      void loadMembers();
+    }
+    if (activePage === 'audit') {
+      void loadAuditLogs();
     }
   }, [activePage, workspace.id]);
 
@@ -192,6 +225,90 @@ export function WorkspaceShell({
   function handleClearSearch() {
     setSearchQuery('');
     setSearchResults([]);
+  }
+
+  async function loadMembers() {
+    try {
+      setModuleLoading(true);
+      setModuleError(null);
+      const nextMembers = await api.workspaceMembers(token, workspace.id);
+      setMembers(nextMembers);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '成员数据加载失败');
+    } finally {
+      setModuleLoading(false);
+    }
+  }
+
+  async function loadAuditLogs() {
+    try {
+      setModuleLoading(true);
+      setModuleError(null);
+      const nextLogs = await api.auditLogs(token, workspace.id);
+      setAuditLogs(nextLogs);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '审计日志加载失败');
+    } finally {
+      setModuleLoading(false);
+    }
+  }
+
+  async function handleAddMember() {
+    const email = memberEmail.trim();
+    if (!email) return;
+    try {
+      setMemberSaving(true);
+      setModuleError(null);
+      await api.addWorkspaceMember(
+        token,
+        workspace.id,
+        email,
+        memberRole,
+        memberDepartment
+      );
+      setMemberEmail('');
+      setMemberDepartment('');
+      setMemberRole('member');
+      await loadMembers();
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '成员添加失败');
+    } finally {
+      setMemberSaving(false);
+    }
+  }
+
+  async function handleUpdateMemberRole(member: WorkspaceMember, role: WorkspaceRole) {
+    try {
+      setMemberActionId(member.id);
+      setModuleError(null);
+      await api.updateWorkspaceMember(
+        token,
+        workspace.id,
+        member.id,
+        role,
+        member.department
+      );
+      await loadMembers();
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '角色更新失败');
+    } finally {
+      setMemberActionId(null);
+    }
+  }
+
+  async function handleRemoveMember(member: WorkspaceMember) {
+    const confirmed = window.confirm(`确认移除“${member.username}”吗？`);
+    if (!confirmed) return;
+    try {
+      setMemberActionId(member.id);
+      setModuleError(null);
+      await api.removeWorkspaceMember(token, workspace.id, member.id);
+      await loadMembers();
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '成员移除失败');
+    } finally {
+      setMemberActionId(null);
+    }
   }
 
   async function handleAskChat() {
@@ -317,6 +434,36 @@ export function WorkspaceShell({
             error={moduleError}
             onQuestionChange={setChatQuestion}
             onAsk={handleAskChat}
+          />
+        ) : activePage === 'members' ? (
+          <MembersPanel
+            currentNavLabel={currentNav.label}
+            members={members}
+            currentUserId={user.id}
+            canManage={canManageMembers}
+            canGrantAdmin={workspace.role === 'owner'}
+            loading={moduleLoading}
+            saving={memberSaving}
+            actionMemberId={memberActionId}
+            error={moduleError}
+            email={memberEmail}
+            department={memberDepartment}
+            role={memberRole}
+            onEmailChange={setMemberEmail}
+            onDepartmentChange={setMemberDepartment}
+            onRoleChange={setMemberRole}
+            onAddMember={handleAddMember}
+            onUpdateRole={handleUpdateMemberRole}
+            onRemoveMember={handleRemoveMember}
+            onRefresh={loadMembers}
+          />
+        ) : activePage === 'audit' ? (
+          <AuditPanel
+            currentNavLabel={currentNav.label}
+            logs={auditLogs}
+            loading={moduleLoading}
+            error={moduleError}
+            onRefresh={loadAuditLogs}
           />
         ) : (
           <DefaultPanel
@@ -675,6 +822,227 @@ function ChatPanel({
   );
 }
 
+function MembersPanel({
+  currentNavLabel,
+  members,
+  currentUserId,
+  canManage,
+  canGrantAdmin,
+  loading,
+  saving,
+  actionMemberId,
+  error,
+  email,
+  department,
+  role,
+  onEmailChange,
+  onDepartmentChange,
+  onRoleChange,
+  onAddMember,
+  onUpdateRole,
+  onRemoveMember,
+  onRefresh
+}: {
+  currentNavLabel: string;
+  members: WorkspaceMember[];
+  currentUserId: string;
+  canManage: boolean;
+  canGrantAdmin: boolean;
+  loading: boolean;
+  saving: boolean;
+  actionMemberId: string | null;
+  error: string | null;
+  email: string;
+  department: string;
+  role: WorkspaceRole;
+  onEmailChange: (value: string) => void;
+  onDepartmentChange: (value: string) => void;
+  onRoleChange: (value: WorkspaceRole) => void;
+  onAddMember: () => void;
+  onUpdateRole: (member: WorkspaceMember, role: WorkspaceRole) => void;
+  onRemoveMember: (member: WorkspaceMember) => void;
+  onRefresh: () => void;
+}) {
+  const availableRoleOptions = canGrantAdmin
+    ? memberRoleOptions
+    : memberRoleOptions.filter((option) => option.value !== 'admin');
+
+  return (
+    <section className="content-panel module-panel collaboration-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">{currentNavLabel}</p>
+          <h2>企业成员</h2>
+          <p>查看企业工作区成员，管理角色和协作权限。</p>
+        </div>
+        <button className="ghost-button" onClick={onRefresh} disabled={loading}>
+          <RefreshCw size={18} aria-hidden="true" />
+          刷新
+        </button>
+      </div>
+
+      {canManage && (
+        <form
+          className="member-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onAddMember();
+          }}
+        >
+          <label>
+            邮箱
+            <input
+              value={email}
+              onChange={(event) => onEmailChange(event.target.value)}
+              placeholder="成员已注册邮箱"
+            />
+          </label>
+          <label>
+            角色
+            <select
+              value={role}
+              onChange={(event) => onRoleChange(event.target.value as WorkspaceRole)}
+            >
+              {availableRoleOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            部门
+            <input
+              value={department}
+              onChange={(event) => onDepartmentChange(event.target.value)}
+              placeholder="可选"
+            />
+          </label>
+          <button className="primary-action compact-action" type="submit" disabled={saving || !email.trim()}>
+            <UserPlus size={18} aria-hidden="true" />
+            {saving ? '添加中' : '添加成员'}
+          </button>
+        </form>
+      )}
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="member-table">
+        <div className="member-row member-head">
+          <span>成员</span>
+          <span>角色</span>
+          <span>部门</span>
+          <span>加入时间</span>
+          <span>操作</span>
+        </div>
+        {members.length === 0 ? (
+          <div className="empty-row">当前企业工作区还没有成员。</div>
+        ) : (
+          members.map((member) => {
+            const isOwner = member.role === 'owner';
+            const isCurrentUser = member.user_id === currentUserId;
+            const canEditRow =
+              canManage && !isOwner && !isCurrentUser && (canGrantAdmin || member.role !== 'admin');
+            return (
+              <div className="member-row" key={member.id}>
+                <span>
+                  <strong>{member.username}</strong>
+                  <small>{member.email}</small>
+                </span>
+                <span>
+                  {canEditRow ? (
+                    <select
+                      value={member.role}
+                      disabled={actionMemberId === member.id}
+                      onChange={(event) =>
+                        onUpdateRole(member, event.target.value as WorkspaceRole)
+                      }
+                    >
+                      {availableRoleOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <StatusBadge value={member.role} />
+                  )}
+                </span>
+                <span>{member.department || '未设置'}</span>
+                <span>{formatDate(member.joined_at)}</span>
+                <span>
+                  <button
+                    className="icon-button danger"
+                    type="button"
+                    title="移除成员"
+                    aria-label={`移除 ${member.username}`}
+                    disabled={!canEditRow || actionMemberId === member.id}
+                    onClick={() => onRemoveMember(member)}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                  </button>
+                </span>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AuditPanel({
+  currentNavLabel,
+  logs,
+  loading,
+  error,
+  onRefresh
+}: {
+  currentNavLabel: string;
+  logs: AuditLogRecord[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="content-panel module-panel collaboration-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">{currentNavLabel}</p>
+          <h2>审计日志</h2>
+          <p>查看当前企业工作区最近的成员、文档、知识库和问答操作。</p>
+        </div>
+        <button className="ghost-button" onClick={onRefresh} disabled={loading}>
+          <RefreshCw size={18} aria-hidden="true" />
+          刷新
+        </button>
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      <div className="audit-list">
+        {logs.length === 0 ? (
+          <div className="empty-row">当前企业工作区还没有审计记录。</div>
+        ) : (
+          logs.map((log) => (
+            <article className="audit-item" key={log.id}>
+              <div>
+                <strong>{actionText(log.action)}</strong>
+                <span>{formatDate(log.created_at)}</span>
+              </div>
+              <p>
+                操作者：{log.user_id || '系统'} · 目标：{log.target_type || '无'} /{' '}
+                {log.target_id || '无'}
+              </p>
+              <code>{formatAuditDetail(log.detail)}</code>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
 function DefaultPanel({
   activePage,
   workspace,
@@ -738,6 +1106,10 @@ function StatusBadge({ value, kind = 'default' }: { value: string; kind?: Status
 function statusText(value: string, kind: StatusBadgeKind = 'default') {
   const maps: Record<StatusBadgeKind, Record<string, string>> = {
     default: {
+      owner: '所有者',
+      admin: '管理员',
+      member: '成员',
+      viewer: '只读',
       empty: '空',
       documents_uploaded: '已上传文档',
       ready: '可检索',
@@ -764,6 +1136,30 @@ function statusText(value: string, kind: StatusBadgeKind = 'default') {
     }
   };
   return maps[kind][value] ?? maps.default[value] ?? value;
+}
+
+function actionText(action: string) {
+  const map: Record<string, string> = {
+    'auth.registered': '账号注册',
+    'auth.login': '密码登录',
+    'auth.email_code_login': '验证码登录',
+    'auth.password_reset': '重置密码',
+    'workspace.created': '创建工作区',
+    'workspace.deleted': '删除工作区',
+    'member.added': '添加成员',
+    'member.role_updated': '修改成员角色',
+    'member.removed': '移除成员',
+    'document.created': '创建文档记录',
+    'document.uploaded': '上传文档',
+    'document.deleted': '删除文档',
+    'chat.asked': '发起问答'
+  };
+  return map[action] ?? action;
+}
+
+function formatAuditDetail(detail: Record<string, unknown>) {
+  const text = JSON.stringify(detail);
+  return text === '{}' ? '无详情' : text;
 }
 
 function formatFileSize(size: number) {
