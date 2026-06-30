@@ -85,12 +85,30 @@ export const api = {
   workspaces(token: string) {
     return request<Workspace[]>('/api/v1/workspaces', {}, token);
   },
+  createPersonal(token: string) {
+    return request<Workspace>(
+      '/api/v1/workspaces/personal',
+      {
+        method: 'POST'
+      },
+      token
+    );
+  },
   createEnterprise(token: string, name: string, description: string) {
     return request<Workspace>(
       '/api/v1/workspaces/enterprise',
       {
         method: 'POST',
         body: JSON.stringify({ name, description })
+      },
+      token
+    );
+  },
+  deleteWorkspace(token: string, workspaceId: string) {
+    return request<void>(
+      `/api/v1/workspaces/${workspaceId}`,
+      {
+        method: 'DELETE'
       },
       token
     );

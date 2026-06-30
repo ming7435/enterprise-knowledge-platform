@@ -130,6 +130,40 @@ export default function App() {
     }
   }
 
+  async function handleCreatePersonal() {
+    if (!token) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const workspace = await api.createPersonal(token);
+      const nextWorkspaces = [...workspaces, workspace];
+      setWorkspaces(nextWorkspaces);
+      setSelectedWorkspace(workspace);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建个人工作区失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteWorkspace(workspace: Workspace) {
+    if (!token) return;
+    try {
+      setLoading(true);
+      setError(null);
+      await api.deleteWorkspace(token, workspace.id);
+      const nextWorkspaces = workspaces.filter((item) => item.id !== workspace.id);
+      setWorkspaces(nextWorkspaces);
+      if (selectedWorkspace?.id === workspace.id) {
+        setSelectedWorkspace(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除工作区失败');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleLogout() {
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
@@ -162,7 +196,9 @@ export default function App() {
         loading={loading}
         error={error}
         onSelect={setSelectedWorkspace}
+        onCreatePersonal={handleCreatePersonal}
         onCreateEnterprise={handleCreateEnterprise}
+        onDeleteWorkspace={handleDeleteWorkspace}
         onLogout={handleLogout}
       />
     );

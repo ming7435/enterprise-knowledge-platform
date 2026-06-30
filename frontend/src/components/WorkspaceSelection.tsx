@@ -1,4 +1,4 @@
-import { Building2, LogOut, Plus, UserRound } from 'lucide-react';
+import { Building2, LogOut, Plus, Trash2, UserRound } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 
 import type { User, Workspace } from '../types';
@@ -9,7 +9,9 @@ interface WorkspaceSelectionProps {
   loading: boolean;
   error: string | null;
   onSelect: (workspace: Workspace) => void;
+  onCreatePersonal: () => Promise<void> | void;
   onCreateEnterprise: (name: string, description: string) => Promise<void> | void;
+  onDeleteWorkspace: (workspace: Workspace) => Promise<void> | void;
   onLogout: () => void;
 }
 
@@ -19,7 +21,9 @@ export function WorkspaceSelection({
   loading,
   error,
   onSelect,
+  onCreatePersonal,
   onCreateEnterprise,
+  onDeleteWorkspace,
   onLogout
 }: WorkspaceSelectionProps) {
   const [name, setName] = useState('');
@@ -46,6 +50,14 @@ export function WorkspaceSelection({
     setDescription('');
   }
 
+  async function handleDelete(workspace: Workspace) {
+    const confirmed = window.confirm(
+      `确认删除“${workspace.name}”吗？工作区内文档、知识片段和会话记录会同步删除。`
+    );
+    if (!confirmed) return;
+    await onDeleteWorkspace(workspace);
+  }
+
   return (
     <main className="workspace-page">
       <header className="workspace-topbar">
@@ -63,7 +75,21 @@ export function WorkspaceSelection({
 
       <section className="workspace-grid">
         <div className="workspace-column">
-          <h2>个人工作区</h2>
+          <div className="workspace-column-head">
+            <h2>个人工作区</h2>
+            <button
+              className="ghost-button compact-create"
+              type="button"
+              disabled={loading}
+              onClick={() => void onCreatePersonal()}
+            >
+              <Plus size={16} aria-hidden="true" />
+              新建
+            </button>
+          </div>
+          {personal.length === 0 && (
+            <p className="empty-state">还没有个人工作区，可以新建一个继续使用。</p>
+          )}
           {personal.map((workspace) => (
             <article className="workspace-card" key={workspace.id}>
               <div className="card-icon personal">
@@ -73,7 +99,21 @@ export function WorkspaceSelection({
                 <h3>{workspace.name}</h3>
                 <p>个人文档、知识库、问答和工具记录。</p>
               </div>
-              <button onClick={() => onSelect(workspace)}>进入</button>
+              <div className="workspace-card-actions">
+                <button onClick={() => onSelect(workspace)} disabled={loading}>
+                  进入
+                </button>
+                <button
+                  className="danger-action"
+                  type="button"
+                  title="删除工作区"
+                  aria-label={`删除 ${workspace.name}`}
+                  disabled={loading}
+                  onClick={() => void handleDelete(workspace)}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
             </article>
           ))}
         </div>
@@ -92,7 +132,21 @@ export function WorkspaceSelection({
                 <h3>{workspace.name}</h3>
                 <p>{workspace.description || '企业文档、权限、审计和知识库。'}</p>
               </div>
-              <button onClick={() => onSelect(workspace)}>进入</button>
+              <div className="workspace-card-actions">
+                <button onClick={() => onSelect(workspace)} disabled={loading}>
+                  进入
+                </button>
+                <button
+                  className="danger-action"
+                  type="button"
+                  title="删除工作区"
+                  aria-label={`删除 ${workspace.name}`}
+                  disabled={loading}
+                  onClick={() => void handleDelete(workspace)}
+                >
+                  <Trash2 size={16} aria-hidden="true" />
+                </button>
+              </div>
             </article>
           ))}
         </div>
