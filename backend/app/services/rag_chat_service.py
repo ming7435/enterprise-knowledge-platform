@@ -31,24 +31,18 @@ class LocalRagClient(RagLlmClient):
         if not sources:
             return RagGeneration(
                 answer="当前工作区没有检索到可用于回答的知识片段，请先上传并解析相关文档。",
-                model_name="local-rag",
+                model_name="model-unavailable",
                 agent_trace=[{"provider": "local", "status": "no_context"}],
             )
-        evidence = "\n".join(
-            f"{index + 1}. 《{source.filename}》片段 {source.chunk_index + 1}："
-            f"{source.content}"
-            for index, source in enumerate(sources[:3])
-        )
         answer = (
-            "根据当前工作区知识库，回答如下：\n"
-            f"{evidence}\n\n"
-            f"你的问题是：{question}\n"
-            "建议以以上来源片段为准；如果需要更精确结论，可以继续补充相关文档。"
+            "当前没有连接到可用的大模型，因此暂时不能生成综合回答。"
+            "请在本地 .env 配置 DEEPSEEK_API_KEY，或启动并配置 Ollama 模型后重试。"
+            "系统已经检索到相关来源片段，你可以在下方“来源”中核对依据；模型连通后会基于这些来源生成正常的自然语言答案。"
         )
         return RagGeneration(
             answer=answer,
-            model_name="local-rag",
-            agent_trace=[{"provider": "local", "status": "answered"}],
+            model_name="model-unavailable",
+            agent_trace=[{"provider": "local", "status": "model_unavailable"}],
         )
 
 
@@ -263,8 +257,10 @@ def _source_to_payload(source: ChunkSearchResult) -> dict:
 
 def _system_prompt() -> str:
     return (
-        "你是企业知识平台的 RAG 助手。只根据提供的知识片段回答，"
-        "优先给出中文、结构清晰、可执行的结论；如果依据不足，请明确说明。"
+        "你是企业知识平台的 RAG 助手。请先理解用户问题，再综合提供的知识片段生成正常的中文自然语言回答。"
+        "不要把知识片段原文直接拼贴成答案，不要把来源列表当作正文。"
+        "回答要结构清晰、可执行，并尽量给出结论、要点和下一步建议。"
+        "如果依据不足，请明确说明缺少哪些信息。"
     )
 
 
@@ -274,7 +270,12 @@ def _user_prompt(question: str, sources: list[ChunkSearchResult]) -> str:
         f"{source.content}"
         for index, source in enumerate(sources)
     )
-    return f"问题：{question}\n\n知识片段：\n{context or '当前没有命中的知识片段。'}"
+    return (
+        f"问题：{question}\n\n"
+        f"知识片段：\n{context or '当前没有命中的知识片段。'}\n\n"
+        "请基于上述知识片段综合作答，输出给用户可直接阅读的答案。"
+        "不要逐字复述片段，不要只列出片段内容。"
+    )
 
 
 def _post_json(url: str, payload: dict, *, headers: dict[str, str]) -> dict:
