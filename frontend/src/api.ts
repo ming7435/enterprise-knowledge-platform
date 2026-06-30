@@ -1,4 +1,5 @@
 import type {
+  ChatAskResponse,
   DocumentRecord,
   EmailCodeLoginInput,
   EmailCodePurpose,
@@ -142,6 +143,20 @@ export const api = {
     return request<KnowledgeChunk[]>(
       `/api/v1/workspaces/${workspaceId}/knowledge-base/search?${params.toString()}`,
       {},
+      token
+    );
+  },
+  askChat(token: string, workspaceId: string, question: string, sessionId?: string | null) {
+    return request<ChatAskResponse>(
+      `/api/v1/workspaces/${workspaceId}/chat/ask`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          question,
+          session_id: sessionId ?? null,
+          top_k: 5
+        })
+      },
       token
     );
   },

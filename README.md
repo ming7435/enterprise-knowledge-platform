@@ -22,6 +22,15 @@
 - V2.4：文档删除、知识片段同步清理、知识库计数回退、MinIO 不可用时快速回退本地存储。
 - 所有文档、知识片段和检索接口继续按 `workspace_id` 隔离。
 
+## V3 已包含
+
+- RAG 智能问答接口：`POST /api/v1/workspaces/{workspace_id}/chat/ask`。
+- 基于当前工作区知识片段检索上下文，返回回答和来源片段。
+- 问答会话与用户/助手消息保存到 `chat_sessions`、`chat_messages`。
+- DeepSeek 优先、Ollama 本地兜底、无模型时本地知识片段兜底回答。
+- 前端“问答”页改为真实聊天界面，展示回答、模型名和来源引用。
+- 中文自然问句检索增强，减少中文无空格问题无法命中文档片段的情况。
+
 ## 本地模型
 
 Rerank 模型路径固定为：
@@ -101,7 +110,7 @@ python -m pip install --no-user -r backend\requirements.txt
 
 n8n、MinIO、Neo4j、MySQL、Redis、Milvus、Attu、etcd 等本地知识库相关配置也统一放在 `.env`，仓库只提交 `.env.example` 占位模板。
 
-V2 文档上传优先使用 MinIO。`FILE_STORAGE=minio` 时，系统会尝试写入 `MINIO_BUCKET`；如果 MinIO 不可用，会快速回退到 `LOCAL_STORAGE_ROOT`。上传成功后，系统会立即解析文档并写入本地知识片段表；V3 再把片段接入向量化和 RAG 问答。
+V2 文档上传优先使用 MinIO。`FILE_STORAGE=minio` 时，系统会尝试写入 `MINIO_BUCKET`；如果 MinIO 不可用，会快速回退到 `LOCAL_STORAGE_ROOT`。上传成功后，系统会立即解析文档并写入本地知识片段表；V3 已把知识片段接入 RAG 问答和来源追溯。
 
 ```text
 FILE_STORAGE=minio
@@ -111,6 +120,22 @@ MINIO_SECRET_KEY=你的本地 MinIO 密码
 MINIO_BUCKET=enterprise-knowledge-platform
 MINIO_SECURE=false
 ```
+
+V3 问答默认使用 DeepSeek，也可以通过 Ollama 使用本地模型。真实 API Key 只写入本地 `.env`，不要提交到 GitHub：
+
+```text
+LLM_PROVIDER=deepseek
+LLM_MODEL=deepseek-v4-flash
+DEEPSEEK_API_KEY=你的本地 DeepSeek API Key
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+DEEPSEEK_MODEL=deepseek-v4-flash
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen3:8b
+RAG_TOP_K=5
+RERANK_MODEL_PATH=L:\RAG_系统\models
+```
+
+如果不配置 `DEEPSEEK_API_KEY`，系统会尝试调用 Ollama；如果 Ollama 也不可用，会用本地知识片段生成兜底回答，保证 V3 问答流程仍可本地跑通。
 
 ## 启动 PostgreSQL
 
@@ -172,9 +197,18 @@ http://127.0.0.1:9521
 7. 在知识库检索框输入文档中的关键词，确认能返回命中的片段。
 8. 回到“文档”删除刚上传的文档，确认知识库数量和检索结果同步清空。
 
+## V3 手工验证流程
+
+1. 登录并进入任意工作区。
+2. 打开“文档”，上传一个包含明确业务内容的 `.txt`、`.md`、`.csv`、`.docx` 或 `.pdf` 文件。
+3. 打开“知识库”，确认文档已解析出知识片段。
+4. 打开“问答”，输入与文档内容相关的问题。
+5. 确认系统返回回答，并显示模型名和来源片段。
+6. 如果没有配置 DeepSeek 或 Ollama，确认系统仍返回基于来源片段的本地兜底回答。
+
 ## 后续版本
 
 - V2：文档上传、解析、切片、知识库状态、本地检索预览。
-- V3：RAG 问答、Embedding、Milvus 入库、Rerank、来源追溯。
+- V3：RAG 问答、会话保存、DeepSeek/Ollama 模型调用、来源追溯。
 - V4：企业成员、角色权限、文档权限、审计日志完善。
-- V5：Neo4j 知识图谱、数据分析、工具中心、企业通知、MinIO、私有化部署。
+- V5：Milvus 深度向量检索、Rerank 强化排序、Neo4j 知识图谱、数据分析、工具中心、企业通知、私有化部署。

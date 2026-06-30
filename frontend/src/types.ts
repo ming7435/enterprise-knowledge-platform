@@ -43,6 +43,20 @@ export interface KnowledgeChunk {
   score: number;
 }
 
+export interface ChatSession {
+  id: string;
+  workspace_id: string;
+  title: string;
+  mode: string;
+}
+
+export interface ChatAskResponse {
+  session: ChatSession;
+  answer: string;
+  sources: KnowledgeChunk[];
+  model_name: string;
+}
+
 export interface LoginInput {
   email: string;
   password: string;

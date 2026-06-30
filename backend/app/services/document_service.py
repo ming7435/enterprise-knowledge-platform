@@ -333,6 +333,11 @@ def _score_chunk(content: str, query: str, terms: list[str]) -> float:
             score += 1.0 + content.count(term) * 0.2
     if not terms and query in content:
         score += 1.0
+    cjk_query_chars = {char for char in query if "\u4e00" <= char <= "\u9fff"}
+    if cjk_query_chars:
+        matched_chars = [char for char in cjk_query_chars if char in content]
+        if len(matched_chars) >= 2:
+            score += len(matched_chars) * 0.2
     return score
 
 

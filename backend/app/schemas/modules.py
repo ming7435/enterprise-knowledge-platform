@@ -50,6 +50,12 @@ class KnowledgeSearchResult(BaseModel):
     score: float
 
 
+class ChatAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    session_id: str | None = None
+    top_k: int = Field(default=5, ge=1, le=8)
+
+
 class ChatSessionCreate(BaseModel):
     title: str = Field(default="新会话", max_length=160)
     mode: str = Field(default="normal", max_length=40)
@@ -62,6 +68,22 @@ class ChatSessionPublic(BaseModel):
     workspace_id: str
     title: str
     mode: str
+
+
+class ChatSourcePublic(BaseModel):
+    id: str
+    document_id: str
+    filename: str
+    chunk_index: int
+    content: str
+    score: float
+
+
+class ChatAskResponse(BaseModel):
+    session: ChatSessionPublic
+    answer: str
+    sources: list[ChatSourcePublic]
+    model_name: str
 
 
 class WorkspaceSettingPublic(BaseModel):

@@ -663,6 +663,86 @@ p {
   -webkit-line-clamp: 3;
 }
 
+.chat-panel {
+  min-height: calc(100vh - 160px);
+}
+
+.chat-thread {
+  display: grid;
+  max-height: 52vh;
+  overflow: auto;
+  gap: 14px;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.chat-message {
+  display: grid;
+  gap: 10px;
+}
+
+.chat-message.user {
+  justify-items: end;
+}
+
+.chat-bubble {
+  display: grid;
+  max-width: min(760px, 100%);
+  gap: 6px;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #fff;
+}
+
+.chat-message.user .chat-bubble {
+  border-color: #99f6e4;
+  background: #ecfdf5;
+}
+
+.chat-bubble span,
+.chat-sources > span,
+.chat-sources small {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chat-bubble p,
+.chat-sources p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.chat-sources {
+  display: grid;
+  width: min(760px, 100%);
+  gap: 8px;
+}
+
+.chat-sources article {
+  display: grid;
+  gap: 4px;
+  border-left: 3px solid #0f766e;
+  padding: 8px 10px;
+  background: #fff;
+}
+
+.chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.chat-composer textarea {
+  min-height: 84px;
+  margin: 0;
+  background: #fff;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -716,12 +796,14 @@ p {
   .panel-heading,
   .upload-card,
   .upload-actions,
-  .knowledge-search {
+  .knowledge-search,
+  .chat-composer {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .knowledge-search {
+  .knowledge-search,
+  .chat-composer {
     grid-template-columns: 1fr;
   }
 
