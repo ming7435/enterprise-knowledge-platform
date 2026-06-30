@@ -11,17 +11,29 @@ from app.models.entities import (
     WorkspaceSetting,
 )
 from app.schemas.modules import (
+    AdvancedNotificationPublic,
+    AdvancedOverviewPublic,
     AuditLogPublic,
     ChatAskRequest,
     ChatAskResponse,
     ChatSessionCreate,
     ChatSessionPublic,
+    DeploymentStatusPublic,
     DocumentChunkPublic,
     DocumentCreate,
     DocumentPublic,
+    KnowledgeGraphPublic,
     KnowledgeBaseStatus,
     KnowledgeSearchResult,
+    ToolStatusPublic,
     WorkspaceSettingPublic,
+)
+from app.services.advanced_service import (
+    build_advanced_overview,
+    build_deployment_status,
+    build_knowledge_graph,
+    list_advanced_notifications,
+    list_tool_statuses,
 )
 from app.services.workspace_service import (
     WORKSPACE_MANAGE_ROLES,
@@ -258,6 +270,62 @@ def ask_chat(
     db.commit()
     db.refresh(result["session"])
     return result
+
+
+@router.get("/advanced/overview", response_model=AdvancedOverviewPublic)
+def get_advanced_overview(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return build_advanced_overview(db, settings=settings, workspace_id=workspace_id)
+
+
+@router.get("/advanced/knowledge-graph", response_model=KnowledgeGraphPublic)
+def get_advanced_knowledge_graph(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return build_knowledge_graph(db, workspace_id=workspace_id)
+
+
+@router.get("/advanced/tool-center", response_model=list[ToolStatusPublic])
+def get_advanced_tool_center(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return list_tool_statuses(settings)
+
+
+@router.get(
+    "/advanced/notifications",
+    response_model=list[AdvancedNotificationPublic],
+)
+def get_advanced_notifications(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return list_advanced_notifications(db, workspace_id=workspace_id)
+
+
+@router.get("/advanced/deployment", response_model=list[DeploymentStatusPublic])
+def get_advanced_deployment(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return build_deployment_status(db, settings=settings, workspace_id=workspace_id)
 
 
 @router.get("/settings", response_model=list[WorkspaceSettingPublic])

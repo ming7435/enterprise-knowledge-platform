@@ -76,6 +76,9 @@ class Settings:
     milvus_host: str = os.getenv("MILVUS_HOST", "localhost")
     milvus_grpc_port: int = int(os.getenv("MILVUS_GRPC_PORT", "19530"))
     milvus_http_port: int = int(os.getenv("MILVUS_HTTP_PORT", "9091"))
+    relational_db: str = os.getenv("RELATIONAL_DB", "sqlite")
+    vector_store: str = os.getenv("VECTOR_STORE", "milvus")
+    graph_db: str = os.getenv("GRAPH_DB", "neo4j")
 
 
 def get_settings() -> Settings:

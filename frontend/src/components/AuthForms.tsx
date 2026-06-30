@@ -177,6 +177,7 @@ export function AuthForms({
     <main className="auth-page">
       <section className="auth-panel" aria-label="账号入口">
         <div className="auth-copy">
+          <img className="auth-logo" src="/qizhiyun-logo.png" alt="企知云" />
           <p className="eyebrow">企业知识平台</p>
           <h1>统一账号入口</h1>
           <p>登录后进入工作区选择页，个人空间与企业空间从第一步开始隔离。</p>
