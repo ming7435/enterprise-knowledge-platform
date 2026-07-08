@@ -31,7 +31,7 @@ class User(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    username: Mapped[str] = mapped_column(String(100))
+    username: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     status: Mapped[str] = mapped_column(String(20), default="active")
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -144,7 +144,7 @@ class VectorIndex(Base, TimestampMixin):
     workspace_id: Mapped[str] = mapped_column(
         ForeignKey("workspaces.id"), unique=True, index=True
     )
-    vector_type: Mapped[str] = mapped_column(String(30), default="faiss")
+    vector_type: Mapped[str] = mapped_column(String(30), default="milvus")
     embedding_model: Mapped[str] = mapped_column(String(120), default="bge-m3:567m")
     index_path: Mapped[str | None] = mapped_column(Text)
     top_k: Mapped[int] = mapped_column(Integer, default=5)

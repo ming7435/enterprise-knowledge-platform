@@ -37,6 +37,14 @@ export function WorkspaceSelection({
     () => workspaces.filter((workspace) => workspace.type === 'enterprise'),
     [workspaces]
   );
+  const workspaceStats = useMemo(
+    () => [
+      { label: '个人空间', value: String(personal.length), hint: '仅个人可见' },
+      { label: '企业空间', value: String(enterprises.length), hint: '成员权限隔离' },
+      { label: '隔离策略', value: '100%', hint: '不跨空间同步' }
+    ],
+    [enterprises.length, personal.length]
+  );
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -64,14 +72,35 @@ export function WorkspaceSelection({
         <div>
           <p className="eyebrow">工作区选择</p>
           <h1>你好，{user.username}</h1>
+          <p className="workspace-scope-note">个人工作区和企业工作区数据完全隔离，不同步、不复制、不跨空间导入。</p>
         </div>
-        <button className="ghost-button" onClick={onLogout}>
-          <LogOut size={18} aria-hidden="true" />
-          退出登录
-        </button>
+        <div className="workspace-topbar-actions">
+          <span className="workspace-user-chip">{user.email}</span>
+          <button className="ghost-button" onClick={onLogout}>
+            <LogOut size={18} aria-hidden="true" />
+            退出登录
+          </button>
+        </div>
       </header>
 
       {(error || localError) && <p className="form-error">{error || localError}</p>}
+
+      <section className="workspace-command-center" aria-label="工作区资产总览">
+        <div>
+          <p className="eyebrow">Knowledge Workspace</p>
+          <h2>选择一个隔离空间开始工作</h2>
+          <span>每个空间都有独立文档、知识片段、向量索引、问答历史和图谱资产。</span>
+        </div>
+        <div className="workspace-stat-strip">
+          {workspaceStats.map((item) => (
+            <article key={item.label}>
+              <strong>{item.value}</strong>
+              <span>{item.label}</span>
+              <small>{item.hint}</small>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="workspace-grid">
         <div className="workspace-column">
@@ -98,6 +127,7 @@ export function WorkspaceSelection({
               <div>
                 <h3>{workspace.name}</h3>
                 <p>个人文档、知识库、问答和工具记录。</p>
+                <small>类型：个人工作区 · 角色：{workspace.role || 'owner'}</small>
               </div>
               <div className="workspace-card-actions">
                 <button onClick={() => onSelect(workspace)} disabled={loading}>
@@ -131,6 +161,7 @@ export function WorkspaceSelection({
               <div>
                 <h3>{workspace.name}</h3>
                 <p>{workspace.description || '企业文档、权限、审计和知识库。'}</p>
+                <small>类型：企业工作区 · 角色：{workspace.role || 'member'}</small>
               </div>
               <div className="workspace-card-actions">
                 <button onClick={() => onSelect(workspace)} disabled={loading}>

@@ -17,6 +17,7 @@ export interface Workspace {
 export interface DocumentRecord {
   id: string;
   workspace_id: string;
+  user_id: string;
   filename: string;
   file_type: string;
   file_path?: string | null;
@@ -25,6 +26,13 @@ export interface DocumentRecord {
   chunk_count: number;
   permission_scope: string;
   created_at: string;
+}
+
+export interface DocumentContent {
+  document: DocumentRecord;
+  library_name: string;
+  content: string;
+  chunk_count: number;
 }
 
 export interface KnowledgeBaseStatus {
@@ -53,8 +61,14 @@ export interface ChatSession {
 export interface ChatAskResponse {
   session: ChatSession;
   answer: string;
-  sources: KnowledgeChunk[];
+  sources?: KnowledgeChunk[];
+  references?: KnowledgeChunk[];
+  chunks?: KnowledgeChunk[];
+  citations?: KnowledgeChunk[];
+  source_chunks?: KnowledgeChunk[];
+  retrieved_chunks?: KnowledgeChunk[];
   model_name: string;
+  use_knowledge_base: boolean;
 }
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
@@ -97,8 +111,9 @@ export interface AdvancedOverview {
 export interface KnowledgeGraphNode {
   id: string;
   label: string;
-  type: 'workspace' | 'document' | 'concept' | string;
+  type: 'entity' | 'workspace' | 'document' | 'chunk' | 'concept' | 'keyword' | 'question' | string;
   weight: number;
+  properties?: Record<string, string | number | boolean | null>;
 }
 
 export interface KnowledgeGraphEdge {
@@ -107,11 +122,23 @@ export interface KnowledgeGraphEdge {
   target: string;
   label: string;
   weight: number;
+  properties?: Record<string, string | number | boolean | null>;
 }
 
 export interface KnowledgeGraph {
+  enabled: boolean;
+  status: 'ready' | 'empty' | 'disabled' | 'unavailable' | 'permission_denied' | string;
+  message?: string | null;
+  mode?: string;
+  partial?: boolean;
+  stats?: {
+    workspace_id?: string | null;
+    node_count: number;
+    edge_count: number;
+  };
   nodes: KnowledgeGraphNode[];
   edges: KnowledgeGraphEdge[];
+  links?: KnowledgeGraphEdge[];
 }
 
 export interface ToolStatus {
@@ -137,6 +164,21 @@ export interface DeploymentStatus {
   status: string;
   value: string;
   description: string;
+}
+
+export interface WorkspaceSettingRecord {
+  setting_key: string;
+  setting_value: Record<string, unknown>;
+  setting_type: string;
+  encrypted: string;
+}
+
+export interface WorkspaceModelConnectionTestResult {
+  ok: boolean;
+  provider: string;
+  model_name: string;
+  message: string;
+  response_preview?: string | null;
 }
 
 export interface LoginInput {

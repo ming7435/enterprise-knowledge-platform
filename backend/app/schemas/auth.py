@@ -14,7 +14,11 @@ class UserPublic(BaseModel):
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    username: str = Field(min_length=1, max_length=100)
+    username: str = Field(
+        min_length=2,
+        max_length=20,
+        pattern=r"^[\u4e00-\u9fffA-Za-z0-9_-]+$",
+    )
     password: str = Field(min_length=8, max_length=128)
     verification_code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
 

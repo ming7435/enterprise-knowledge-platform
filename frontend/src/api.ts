@@ -4,6 +4,7 @@ import type {
   AuditLogRecord,
   ChatAskResponse,
   DeploymentStatus,
+  DocumentContent,
   DocumentRecord,
   EmailCodeLoginInput,
   EmailCodePurpose,
@@ -16,12 +17,19 @@ import type {
   ToolStatus,
   User,
   Workspace,
+  WorkspaceModelConnectionTestResult,
   WorkspaceMember,
-  WorkspaceRole
+  WorkspaceRole,
+  WorkspaceSettingRecord
 } from './types';
 
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:9520';
+const defaultApiBaseUrl =
+  typeof window !== 'undefined' &&
+  !['localhost', '127.0.0.1'].includes(window.location.hostname)
+    ? window.location.origin
+    : 'http://127.0.0.1:9520';
+
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? defaultApiBaseUrl;
 
 interface TokenResponse {
   access_token: string;
@@ -184,6 +192,28 @@ export const api = {
       token
     );
   },
+  deleteAuditLog(token: string, workspaceId: string, auditLogId: string) {
+    return request<void>(
+      `/api/v1/workspaces/${workspaceId}/audit-logs/${auditLogId}`,
+      {
+        method: 'DELETE'
+      },
+      token
+    );
+  },
+  deleteAuditLogs(token: string, workspaceId: string, retentionDays?: number | null) {
+    const query =
+      retentionDays && retentionDays > 0
+        ? `?${new URLSearchParams({ retention_days: String(retentionDays) }).toString()}`
+        : '';
+    return request<{ deleted_count: number }>(
+      `/api/v1/workspaces/${workspaceId}/audit-logs${query}`,
+      {
+        method: 'DELETE'
+      },
+      token
+    );
+  },
   documents(token: string, workspaceId: string) {
     return request<DocumentRecord[]>(
       `/api/v1/workspaces/${workspaceId}/documents`,
@@ -198,25 +228,45 @@ export const api = {
       token
     );
   },
-  knowledgeChunks(token: string, workspaceId: string, limit = 10) {
+  knowledgeChunks(token: string, workspaceId: string, limit = 10, documentIds?: string[]) {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (documentIds?.length) {
+      params.set('document_ids', documentIds.join(','));
+    }
     return request<KnowledgeChunk[]>(
-      `/api/v1/workspaces/${workspaceId}/knowledge-base/chunks?limit=${limit}`,
+      `/api/v1/workspaces/${workspaceId}/knowledge-base/chunks?${params.toString()}`,
       {},
       token
     );
   },
-  searchKnowledge(token: string, workspaceId: string, query: string, limit = 10) {
+  searchKnowledge(
+    token: string,
+    workspaceId: string,
+    query: string,
+    limit = 10,
+    documentIds?: string[]
+  ) {
     const params = new URLSearchParams({
       query,
       limit: String(limit)
     });
+    if (documentIds?.length) {
+      params.set('document_ids', documentIds.join(','));
+    }
     return request<KnowledgeChunk[]>(
       `/api/v1/workspaces/${workspaceId}/knowledge-base/search?${params.toString()}`,
       {},
       token
     );
   },
-  askChat(token: string, workspaceId: string, question: string, sessionId?: string | null) {
+  askChat(
+    token: string,
+    workspaceId: string,
+    question: string,
+    sessionId?: string | null,
+    documentIds?: string[],
+    useKnowledgeBase = false
+  ) {
     return request<ChatAskResponse>(
       `/api/v1/workspaces/${workspaceId}/chat/ask`,
       {
@@ -224,9 +274,17 @@ export const api = {
         body: JSON.stringify({
           question,
           session_id: sessionId ?? null,
-          top_k: 5
+          document_ids: documentIds?.length ? documentIds : null,
+          use_knowledge_base: useKnowledgeBase
         })
       },
+      token
+    );
+  },
+  documentContent(token: string, workspaceId: string, documentId: string) {
+    return request<DocumentContent>(
+      `/api/v1/workspaces/${workspaceId}/documents/${documentId}/content`,
+      {},
       token
     );
   },
@@ -259,10 +317,50 @@ export const api = {
       token
     );
   },
-  knowledgeGraph(token: string, workspaceId: string) {
+  knowledgeGraph(token: string, workspaceId: string, documentIds?: string[]) {
+    const params = new URLSearchParams();
+    if (documentIds?.length) {
+      params.set('document_ids', documentIds.join(','));
+    }
+    const query = params.toString() ? `?${params.toString()}` : '';
     return request<KnowledgeGraph>(
-      `/api/v1/workspaces/${workspaceId}/advanced/knowledge-graph`,
+      `/api/v1/workspaces/${workspaceId}/knowledge-graph${query}`,
       {},
+      token
+    );
+  },
+  searchGraphNodes(token: string, workspaceId: string, query: string, limit = 20, documentIds?: string[]) {
+    const params = new URLSearchParams({ query, limit: String(limit) });
+    if (documentIds?.length) {
+      params.set('document_ids', documentIds.join(','));
+    }
+    return request<{ enabled: boolean; status: string; results: KnowledgeGraph['nodes'] }>(
+      `/api/v1/workspaces/${workspaceId}/knowledge-graph/search?${params.toString()}`,
+      {},
+      token
+    );
+  },
+  graphNodeDetail(token: string, workspaceId: string, nodeId: string) {
+    return request<{ enabled: boolean; status: string; node?: KnowledgeGraph['nodes'][number] }>(
+      `/api/v1/workspaces/${workspaceId}/knowledge-graph/nodes/${encodeURIComponent(nodeId)}`,
+      {},
+      token
+    );
+  },
+  graphNeighbors(token: string, workspaceId: string, nodeId: string, depth = 1) {
+    const params = new URLSearchParams({ depth: String(depth) });
+    return request<{ enabled: boolean; status: string; results: KnowledgeGraph['nodes'] }>(
+      `/api/v1/workspaces/${workspaceId}/knowledge-graph/nodes/${encodeURIComponent(nodeId)}/neighbors?${params.toString()}`,
+      {},
+      token
+    );
+  },
+  rebuildKnowledgeGraph(token: string, workspaceId: string) {
+    return request<KnowledgeGraph>(
+      `/api/v1/workspaces/${workspaceId}/knowledge-graph/rebuild`,
+      {
+        method: 'POST'
+      },
       token
     );
   },
@@ -284,6 +382,43 @@ export const api = {
     return request<DeploymentStatus[]>(
       `/api/v1/workspaces/${workspaceId}/advanced/deployment`,
       {},
+      token
+    );
+  },
+  workspaceSettings(token: string, workspaceId: string) {
+    return request<WorkspaceSettingRecord[]>(
+      `/api/v1/workspaces/${workspaceId}/settings`,
+      {},
+      token
+    );
+  },
+  saveWorkspaceSetting(
+    token: string,
+    workspaceId: string,
+    settingKey: string,
+    settingValue: Record<string, unknown>
+  ) {
+    return request<WorkspaceSettingRecord>(
+      `/api/v1/workspaces/${workspaceId}/settings/${settingKey}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ setting_value: settingValue })
+      },
+      token
+    );
+  },
+  testWorkspaceModelConnection(
+    token: string,
+    workspaceId: string,
+    settingKey: string,
+    settingValue: Record<string, unknown>
+  ) {
+    return request<WorkspaceModelConnectionTestResult>(
+      `/api/v1/workspaces/${workspaceId}/settings/model-api/test`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ setting_key: settingKey, setting_value: settingValue })
+      },
       token
     );
   }

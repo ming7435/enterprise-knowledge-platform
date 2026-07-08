@@ -13,6 +13,7 @@ class DocumentPublic(BaseModel):
 
     id: str
     workspace_id: str
+    user_id: str
     filename: str
     file_type: str
     file_path: str | None
@@ -21,6 +22,13 @@ class DocumentPublic(BaseModel):
     chunk_count: int
     permission_scope: str
     created_at: datetime
+
+
+class DocumentContentPublic(BaseModel):
+    document: DocumentPublic
+    library_name: str
+    content: str
+    chunk_count: int
 
 
 class KnowledgeBaseStatus(BaseModel):
@@ -53,7 +61,9 @@ class KnowledgeSearchResult(BaseModel):
 class ChatAskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     session_id: str | None = None
-    top_k: int = Field(default=5, ge=1, le=8)
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    document_ids: list[str] | None = None
+    use_knowledge_base: bool = False
 
 
 class ChatSessionCreate(BaseModel):
@@ -80,10 +90,13 @@ class ChatSourcePublic(BaseModel):
 
 
 class ChatAskResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     session: ChatSessionPublic
     answer: str
     sources: list[ChatSourcePublic]
     model_name: str
+    use_knowledge_base: bool
 
 
 class WorkspaceSettingPublic(BaseModel):
@@ -93,6 +106,26 @@ class WorkspaceSettingPublic(BaseModel):
     setting_value: dict
     setting_type: str
     encrypted: str
+
+
+class WorkspaceSettingUpdate(BaseModel):
+    setting_value: dict
+    setting_type: str = "json"
+
+
+class WorkspaceModelConnectionTestRequest(BaseModel):
+    setting_key: str = Field(max_length=120)
+    setting_value: dict
+
+
+class WorkspaceModelConnectionTestResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
+    ok: bool
+    provider: str
+    model_name: str
+    message: str
+    response_preview: str | None = None
 
 
 class AuditLogPublic(BaseModel):
@@ -125,6 +158,7 @@ class KnowledgeGraphNodePublic(BaseModel):
     label: str
     type: str
     weight: int = 1
+    properties: dict = Field(default_factory=dict)
 
 
 class KnowledgeGraphEdgePublic(BaseModel):
@@ -133,11 +167,25 @@ class KnowledgeGraphEdgePublic(BaseModel):
     target: str
     label: str
     weight: int = 1
+    properties: dict = Field(default_factory=dict)
+
+
+class KnowledgeGraphStatsPublic(BaseModel):
+    node_count: int = 0
+    edge_count: int = 0
+    workspace_id: str | None = None
 
 
 class KnowledgeGraphPublic(BaseModel):
+    enabled: bool = True
+    status: str = "ready"
+    message: str | None = None
+    mode: str = "neo4j"
+    partial: bool = False
+    stats: KnowledgeGraphStatsPublic = Field(default_factory=KnowledgeGraphStatsPublic)
     nodes: list[KnowledgeGraphNodePublic]
     edges: list[KnowledgeGraphEdgePublic]
+    links: list[KnowledgeGraphEdgePublic] = Field(default_factory=list)
 
 
 class ToolStatusPublic(BaseModel):

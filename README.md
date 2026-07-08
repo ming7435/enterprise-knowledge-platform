@@ -45,9 +45,8 @@
 - 接入“企知云”品牌 Logo，登录页和工作区侧边栏统一展示品牌入口。
 - 新增 V5 高级驾驶舱：汇总文档数量、知识片段、成员数量、审计事件和最近活动。
 - 新增知识图谱预览接口和界面：按工作区、文档、概念生成节点和关系，展示“包含文档”“包含概念”等关系。
-- 新增工具中心：展示 Milvus、Neo4j、BGE Rerank、MinIO、n8n、Ollama 等本地能力接入状态。
 - 新增通知中心：根据审计日志生成工作区动态，不需要额外消息队列即可先跑通 V5 效果。
-- 新增部署状态：展示数据库、文件存储、重排模型、向量检索、图数据库和知识库状态，只展示状态与地址，不展示账号、密码和密钥。
+- 工具中心和部署状态接口保留给程序调用，不在高级页展示给业务用户。
 
 ## 本地模型
 
@@ -97,10 +96,16 @@ npm --prefix frontend install
 Copy-Item .env.example .env
 ```
 
-`.env` 不会提交到 GitHub。V1 默认使用 SQLite 即可跑通；需要 PostgreSQL 时，把 `DATABASE_URL` 改成：
+`.env` 不会提交到 GitHub。当前推荐使用 PostgreSQL；先启动本地 PostgreSQL，再把 `DATABASE_URL` 设置为：
 
 ```text
 postgresql+psycopg://rag_user:rag_password@localhost:5432/rag_platform
+```
+
+如果只是临时单机快速跑通，也可以改回 SQLite：
+
+```text
+sqlite:///./storage/dev.db
 ```
 
 邮箱验证码需要在本地 `.env` 填写 SMTP 配置。QQ 邮箱使用授权码，不要填写 QQ 登录密码：
@@ -157,13 +162,13 @@ RERANK_MODEL_PATH=L:\RAG_系统\models
 
 ## 启动 PostgreSQL
 
-如需使用 PostgreSQL：
+当前推荐使用 PostgreSQL：
 
 ```powershell
 docker compose -f infra\docker-compose.yml up -d
 ```
 
-V1 也支持默认 SQLite，本地快速跑通时可以先不启动 PostgreSQL。
+启动后端前确认 `.env` 中的 `DATABASE_URL` 指向 PostgreSQL。系统启动时会自动建表；如果只是快速临时验证，也可以改用 SQLite。
 
 ## 启动后端
 
@@ -237,14 +242,13 @@ http://127.0.0.1:9521
 
 1. 启动后端和前端，登录任意已有账号。
 2. 进入个人工作区或企业工作区，确认侧边栏显示“高级”入口和“企知云”Logo。
-3. 打开“高级”，确认能看到 V5 高级驾驶舱的概览指标、知识图谱预览、工具中心、通知中心和部署状态。
+3. 打开“高级”，确认能看到 V5 高级驾驶舱的概览指标、知识图谱预览和通知中心。
 4. 上传一份文档后回到“高级”，确认文档数量、知识片段、图谱节点和通知动态会刷新。
-5. 确认工具中心能显示 Milvus、Neo4j、Rerank、MinIO、n8n、Ollama 的状态。
-6. 确认部署状态只显示运行状态、地址或路径，不显示账号、密码、API Key、Token。
+5. 确认页面不展示工具中心、部署状态、账号、密码、API Key、Token 等开发或运维信息。
 
 ## 版本路线
 
 - V2：文档上传、解析、切片、知识库状态、本地检索预览。
 - V3：RAG 问答、会话保存、DeepSeek/Ollama 模型调用、来源追溯。
 - V4：企业成员、角色权限、文档权限、审计日志完善。
-- V5：企知云 Logo、高级驾驶舱、知识图谱预览、工具中心、通知中心、部署状态。
+- V5：企知云 Logo、高级驾驶舱、知识图谱预览、通知中心；工具中心和部署状态仅保留为程序接口。

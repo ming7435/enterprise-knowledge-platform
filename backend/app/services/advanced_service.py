@@ -40,6 +40,7 @@ CONCEPT_KEYWORDS = (
 ACTION_LABELS = {
     "document.created": ("文档已创建", "新增了文档记录"),
     "document.uploaded": ("文档已上传", "文档已进入解析与索引流程"),
+    "document.asset_saved": ("文件资产已保存", "暂不支持解析的文件已作为资产保存"),
     "document.deleted": ("文档已删除", "文档与知识片段已从当前工作区移除"),
     "workspace.created": ("工作区已创建", "新的工作区已准备好"),
     "workspace.deleted": ("工作区已删除", "工作区及关联数据已清理"),

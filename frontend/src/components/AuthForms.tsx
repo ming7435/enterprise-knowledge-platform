@@ -21,6 +21,8 @@ import type {
 
 type AuthMethod = 'password' | 'emailCode' | 'forgotPassword';
 
+const USERNAME_PATTERN = /^[\u4e00-\u9fffA-Za-z0-9_-]{2,20}$/;
+
 interface AuthFormsProps {
   mode: 'login' | 'register';
   loading: boolean;
@@ -133,7 +135,14 @@ export function AuthForms({
     event.preventDefault();
     const nextErrors: FormErrors = {};
     if (!email.trim()) nextErrors.email = '请输入邮箱';
-    if (isRegister && !username.trim()) nextErrors.username = '请输入用户名';
+    if (isRegister) {
+      const cleanUsername = username.trim();
+      if (!cleanUsername) {
+        nextErrors.username = '请输入用户名';
+      } else if (!USERNAME_PATTERN.test(cleanUsername)) {
+        nextErrors.username = '用户名需为 2-20 个中文、英文、数字、下划线或中划线字符';
+      }
+    }
     if ((needsPassword || isResetPassword) && !password.trim()) nextErrors.password = '请输入密码';
     if (needsVerificationCode && !verificationCode.trim()) {
       nextErrors.verification_code = '请输入邮箱验证码';
@@ -145,7 +154,7 @@ export function AuthForms({
     if (isRegister) {
       await onRegister({
         email,
-        username,
+        username: username.trim(),
         password,
         verification_code: verificationCode
       });
@@ -181,9 +190,35 @@ export function AuthForms({
           <p className="eyebrow">企业知识平台</p>
           <h1>统一账号入口</h1>
           <p>登录后进入工作区选择页，个人空间与企业空间从第一步开始隔离。</p>
+          <div className="auth-proof-grid" aria-label="平台能力概览">
+            <article>
+              <strong>Workspace</strong>
+              <span>个人 / 企业双空间隔离</span>
+            </article>
+            <article>
+              <strong>RAG</strong>
+              <span>文档入库、检索、引用追溯</span>
+            </article>
+            <article>
+              <strong>Graph</strong>
+              <span>Neo4j 文件实体关系图谱</span>
+            </article>
+          </div>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
+          <div className="auth-form-head">
+            <p className="eyebrow">{isRegister ? '创建账号' : isResetPassword ? '安全重置' : '安全登录'}</p>
+            <h2>{isRegister ? '注册企知云账号' : isResetPassword ? '找回访问权限' : '进入知识工作台'}</h2>
+            <span>
+              {isRegister
+                ? '使用邮箱验证码完成注册，后续进入工作区选择页。'
+                : isResetPassword
+                  ? '通过邮箱验证码确认身份并设置新密码。'
+                  : '支持密码和邮箱验证码两种登录方式。'}
+            </span>
+          </div>
+
           <div className="auth-tabs" role="tablist" aria-label="认证方式">
             <button
               type="button"

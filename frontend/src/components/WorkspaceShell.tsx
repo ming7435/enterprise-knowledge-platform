@@ -10,35 +10,40 @@ import {
   Network,
   RefreshCw,
   Search,
-  Server,
   Settings,
   ShieldCheck,
   Trash2,
   Upload,
   UserPlus,
   Users,
-  Wrench,
   Workflow
 } from 'lucide-react';
 import { ChangeEvent, useEffect, useMemo, useState } from 'react';
 
 import { api } from '../api';
+import { getDisplayName, maskEmail, shortId } from '../display';
+import { formatBeijingDateTime } from '../time';
+import { EnterpriseWorkspacePanel } from './EnterpriseWorkspace';
+import { PersonalWorkspacePanel } from './PersonalWorkspace';
 import type {
   AdvancedNotification,
   AdvancedOverview,
   AuditLogRecord,
   ChatAskResponse,
-  DeploymentStatus,
+  DocumentContent,
   DocumentRecord,
   KnowledgeGraph,
   KnowledgeBaseStatus,
   KnowledgeChunk,
-  ToolStatus,
   User,
   Workspace,
+  WorkspaceModelConnectionTestResult,
   WorkspaceMember,
-  WorkspaceRole
+  WorkspaceRole,
+  WorkspaceSettingRecord
 } from '../types';
+import type { PersonalPageKey } from './PersonalWorkspace';
+import type { EnterprisePageKey } from './EnterpriseWorkspace';
 
 interface ChatMessageView {
   id: string;
@@ -46,6 +51,8 @@ interface ChatMessageView {
   content: string;
   sources?: KnowledgeChunk[];
   modelName?: string;
+  useKnowledgeBase?: boolean;
+  createdAt: string;
 }
 
 interface WorkspaceShellProps {
@@ -66,6 +73,8 @@ type PageKey =
   | 'members'
   | 'audit';
 
+const MEMBER_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const baseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
   { key: 'dashboard', label: '首页', icon: Home },
   { key: 'documents', label: '文档', icon: FileText },
@@ -75,8 +84,23 @@ const baseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
   { key: 'advanced', label: '高级', icon: BarChart3 }
 ];
 
+const personalNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
+  { key: 'dashboard', label: '首页', icon: Home },
+  { key: 'documents', label: '文档管理', icon: FileText },
+  { key: 'knowledge', label: '知识库', icon: Workflow },
+  { key: 'chat', label: '智能问答', icon: Bot },
+  { key: 'settings', label: '个人设置', icon: Settings },
+  { key: 'advanced', label: '高级驾驶舱', icon: BarChart3 }
+];
+
 const enterpriseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
-  { key: 'members', label: '成员', icon: Users },
+  { key: 'dashboard', label: '首页', icon: Home },
+  { key: 'documents', label: '文档管理', icon: FileText },
+  { key: 'knowledge', label: '企业知识库', icon: Workflow },
+  { key: 'chat', label: '企业问答', icon: Bot },
+  { key: 'settings', label: '企业设置', icon: Settings },
+  { key: 'advanced', label: '高级驾驶舱', icon: BarChart3 },
+  { key: 'members', label: '成员管理', icon: Users },
   { key: 'audit', label: '审计日志', icon: ShieldCheck }
 ];
 
@@ -101,15 +125,17 @@ export function WorkspaceShell({
   const [auditLogs, setAuditLogs] = useState<AuditLogRecord[]>([]);
   const [advancedOverview, setAdvancedOverview] = useState<AdvancedOverview | null>(null);
   const [knowledgeGraph, setKnowledgeGraph] = useState<KnowledgeGraph | null>(null);
-  const [toolStatuses, setToolStatuses] = useState<ToolStatus[]>([]);
   const [advancedNotifications, setAdvancedNotifications] = useState<AdvancedNotification[]>([]);
-  const [deploymentStatuses, setDeploymentStatuses] = useState<DeploymentStatus[]>([]);
+  const [workspaceSettings, setWorkspaceSettings] = useState<WorkspaceSettingRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<KnowledgeChunk[]>([]);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [documentContents, setDocumentContents] = useState<Record<string, DocumentContent>>({});
   const [memberEmail, setMemberEmail] = useState('');
   const [memberDepartment, setMemberDepartment] = useState('');
   const [memberRole, setMemberRole] = useState<WorkspaceRole>('member');
+  const [knowledgeDocumentFilter, setKnowledgeDocumentFilter] = useState('all');
+  const [moduleNotice, setModuleNotice] = useState<string | null>(null);
   const [moduleLoading, setModuleLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -117,17 +143,27 @@ export function WorkspaceShell({
   const [chatQuestion, setChatQuestion] = useState('');
   const [chatSessionId, setChatSessionId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessageView[]>([]);
+  const [selectedKnowledgeDocumentIds, setSelectedKnowledgeDocumentIds] = useState<string[]>([]);
+  const [selectedGraphDocumentIds, setSelectedGraphDocumentIds] = useState<string[]>([]);
+  const [useKnowledgeBaseForChat, setUseKnowledgeBaseForChat] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [deletingDocumentIds, setDeletingDocumentIds] = useState<string[]>([]);
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
+  const [deletingAuditLogId, setDeletingAuditLogId] = useState<string | null>(null);
+  const [auditBulkDeleting, setAuditBulkDeleting] = useState(false);
+  const [auditRetentionDeleting, setAuditRetentionDeleting] = useState(false);
+  const [settingSavingKey, setSettingSavingKey] = useState<string | null>(null);
+  const [settingTestingKey, setSettingTestingKey] = useState<string | null>(null);
   const [moduleError, setModuleError] = useState<string | null>(null);
 
-  const navItems =
-    workspace.type === 'enterprise' ? [...baseNav, ...enterpriseNav] : baseNav;
+  const navItems = workspace.type === 'enterprise' ? enterpriseNav : personalNav;
   const currentNav = navItems.find((item) => item.key === activePage) ?? navItems[0];
   const workspaceLabel = workspace.type === 'enterprise' ? '企业工作区' : '个人工作区';
   const latestDocuments = useMemo(() => documents.slice(0, 3), [documents]);
   const canManageMembers = workspace.role === 'owner' || workspace.role === 'admin';
+  const activeChatModelName = getActiveChatModelName(workspace.type, workspaceSettings);
+  const currentUserName = getDisplayName(user);
 
   useEffect(() => {
     setDocuments([]);
@@ -137,28 +173,54 @@ export function WorkspaceShell({
     setAuditLogs([]);
     setAdvancedOverview(null);
     setKnowledgeGraph(null);
-    setToolStatuses([]);
     setAdvancedNotifications([]);
-    setDeploymentStatuses([]);
+    setWorkspaceSettings([]);
     setSearchQuery('');
     setSearchResults([]);
-    setSelectedFile(null);
+    setKnowledgeDocumentFilter('all');
+    setSelectedFiles([]);
+    setDocumentContents({});
     setMemberEmail('');
     setMemberDepartment('');
     setMemberRole('member');
     setChatQuestion('');
     setChatSessionId(null);
     setChatMessages([]);
+    setSelectedKnowledgeDocumentIds([]);
+    setSelectedGraphDocumentIds([]);
+    setUseKnowledgeBaseForChat(false);
     setChatLoading(false);
     setDeletingDocumentId(null);
+    setDeletingDocumentIds([]);
     setMemberActionId(null);
+    setDeletingAuditLogId(null);
+    setAuditBulkDeleting(false);
+    setAuditRetentionDeleting(false);
+    setSettingSavingKey(null);
+    setSettingTestingKey(null);
     setModuleError(null);
+    setModuleNotice(null);
     setActivePage('dashboard');
   }, [workspace.id]);
 
   useEffect(() => {
-    if (activePage === 'documents' || activePage === 'knowledge' || activePage === 'dashboard') {
+    if (activePage === 'dashboard') {
+      if (workspace.type === 'enterprise') {
+        void loadEnterpriseDashboard();
+      } else {
+        void loadWorkspaceModules();
+      }
+    }
+    if (
+      activePage === 'documents' ||
+      activePage === 'knowledge' ||
+      activePage === 'chat' ||
+      activePage === 'settings'
+    ) {
       void loadWorkspaceModules();
+    }
+    if (activePage === 'settings' || activePage === 'chat') {
+      void loadWorkspaceSettings();
     }
   }, [activePage, workspace.id]);
 
@@ -181,6 +243,7 @@ export function WorkspaceShell({
     try {
       setModuleLoading(true);
       setModuleError(null);
+      setModuleNotice(null);
       const [nextDocuments, nextKnowledgeBase, nextChunks] = await Promise.all([
         api.documents(token, workspace.id),
         api.knowledgeBase(token, workspace.id),
@@ -196,17 +259,126 @@ export function WorkspaceShell({
     }
   }
 
+  async function loadWorkspaceSettings() {
+    try {
+      setModuleError(null);
+      const nextSettings = await api.workspaceSettings(token, workspace.id);
+      setWorkspaceSettings(nextSettings);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '配置数据加载失败');
+    }
+  }
+
+  async function handleSaveWorkspaceSetting(
+    settingKey: string,
+    settingValue: Record<string, unknown>
+  ) {
+    try {
+      setSettingSavingKey(settingKey);
+      setModuleError(null);
+      setModuleNotice(null);
+      const saved = await api.saveWorkspaceSetting(token, workspace.id, settingKey, settingValue);
+      setWorkspaceSettings((items) => {
+        const exists = items.some((item) => item.setting_key === settingKey);
+        if (!exists) return [...items, saved];
+        return items.map((item) => (item.setting_key === settingKey ? saved : item));
+      });
+      setModuleNotice('配置已保存，后续问答会使用新的工作区配置。');
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '配置保存失败');
+    } finally {
+      setSettingSavingKey(null);
+    }
+  }
+
+  async function handleTestWorkspaceModelConnection(
+    settingKey: string,
+    settingValue: Record<string, unknown>
+  ): Promise<WorkspaceModelConnectionTestResult | null> {
+    try {
+      setSettingTestingKey(settingKey);
+      setModuleError(null);
+      setModuleNotice(null);
+      const result = await api.testWorkspaceModelConnection(
+        token,
+        workspace.id,
+        settingKey,
+        settingValue
+      );
+      if (result.ok) {
+        setModuleNotice(`${result.message}，当前模型：${result.model_name}`);
+      } else {
+        setModuleError(result.message);
+      }
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '模型 API 连接测试失败';
+      setModuleError(message);
+      return null;
+    } finally {
+      setSettingTestingKey(null);
+    }
+  }
+
+  async function loadEnterpriseDashboard() {
+    try {
+      setModuleLoading(true);
+      setModuleError(null);
+      setModuleNotice(null);
+      const [
+        nextDocuments,
+        nextKnowledgeBase,
+        nextChunks,
+        nextMembers,
+        nextLogs,
+        overview,
+        graph,
+        notifications
+      ] = await Promise.all([
+        api.documents(token, workspace.id),
+        api.knowledgeBase(token, workspace.id),
+        api.knowledgeChunks(token, workspace.id, 8),
+        api.workspaceMembers(token, workspace.id),
+        api.auditLogs(token, workspace.id),
+        api.advancedOverview(token, workspace.id),
+        api.knowledgeGraph(token, workspace.id),
+        api.advancedNotifications(token, workspace.id)
+      ]);
+      setDocuments(nextDocuments);
+      setKnowledgeBase(nextKnowledgeBase);
+      setKnowledgeChunks(nextChunks);
+      setMembers(nextMembers);
+      setAuditLogs(nextLogs);
+      setAdvancedOverview(overview);
+      setKnowledgeGraph(graph);
+      setAdvancedNotifications(notifications);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '企业首页数据加载失败');
+    } finally {
+      setModuleLoading(false);
+    }
+  }
+
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setSelectedFile(event.target.files?.[0] ?? null);
+    setSelectedFiles(Array.from(event.target.files ?? []));
   }
 
   async function handleUpload() {
-    if (!selectedFile) return;
+    if (selectedFiles.length === 0) return;
     try {
       setUploading(true);
       setModuleError(null);
-      await api.uploadDocument(token, workspace.id, selectedFile);
-      setSelectedFile(null);
+      setModuleNotice(null);
+      await Promise.all(
+        selectedFiles.map((file) => api.uploadDocument(token, workspace.id, file))
+      );
+      const uploadedCount = selectedFiles.length;
+      setSelectedFiles([]);
+      setModuleNotice(
+        workspace.type === 'personal'
+          ? `已上传 ${uploadedCount} 个文档，均已进入当前个人工作区。`
+          : `已上传 ${uploadedCount} 个企业文档，均已进入当前企业工作区。`
+      );
       await loadWorkspaceModules();
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '文档上传失败');
@@ -220,14 +392,50 @@ export function WorkspaceShell({
     if (!confirmed) return;
     try {
       setDeletingDocumentId(document.id);
+      setDeletingDocumentIds([document.id]);
       setModuleError(null);
+      setModuleNotice(null);
       await api.deleteDocument(token, workspace.id, document.id);
       setSearchResults([]);
+      setSelectedKnowledgeDocumentIds((ids) => ids.filter((id) => id !== document.id));
+      setModuleNotice(
+        workspace.type === 'enterprise'
+          ? '企业文档已删除，对应知识片段已在当前企业工作区内清理。'
+          : '文档已删除，对应知识片段已同步清理。'
+      );
       await loadWorkspaceModules();
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '文档删除失败');
     } finally {
       setDeletingDocumentId(null);
+      setDeletingDocumentIds([]);
+    }
+  }
+
+  async function handleDeleteDocuments(selectedDocuments: DocumentRecord[]) {
+    if (selectedDocuments.length === 0) return;
+    const confirmed = window.confirm(`确认同时删除选中的 ${selectedDocuments.length} 个文件知识库吗？对应知识片段也会同步移除。`);
+    if (!confirmed) return;
+    try {
+      const ids = selectedDocuments.map((document) => document.id);
+      setDeletingDocumentIds(ids);
+      setDeletingDocumentId(ids[0] ?? null);
+      setModuleError(null);
+      setModuleNotice(null);
+      await Promise.all(
+        selectedDocuments.map((document) => api.deleteDocument(token, workspace.id, document.id))
+      );
+      setSearchResults([]);
+      setSelectedKnowledgeDocumentIds((currentIds) =>
+        currentIds.filter((id) => !ids.includes(id))
+      );
+      setModuleNotice(`已同时删除 ${selectedDocuments.length} 个文件知识库。`);
+      await loadWorkspaceModules();
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '批量删除文件失败');
+    } finally {
+      setDeletingDocumentId(null);
+      setDeletingDocumentIds([]);
     }
   }
 
@@ -240,7 +448,16 @@ export function WorkspaceShell({
     try {
       setSearching(true);
       setModuleError(null);
-      const results = await api.searchKnowledge(token, workspace.id, query);
+      setModuleNotice(null);
+      const filterDocumentIds =
+        knowledgeDocumentFilter === 'all' ? undefined : [knowledgeDocumentFilter];
+      const results = await api.searchKnowledge(
+        token,
+        workspace.id,
+        query,
+        20,
+        filterDocumentIds
+      );
       setSearchResults(results);
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '知识库检索失败');
@@ -252,12 +469,25 @@ export function WorkspaceShell({
   function handleClearSearch() {
     setSearchQuery('');
     setSearchResults([]);
+    setModuleNotice(null);
+  }
+
+  async function handleLoadDocumentContent(document: DocumentRecord) {
+    if (documentContents[document.id]) return;
+    try {
+      setModuleError(null);
+      const content = await api.documentContent(token, workspace.id, document.id);
+      setDocumentContents((items) => ({ ...items, [document.id]: content }));
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '文档全文加载失败');
+    }
   }
 
   async function loadMembers() {
     try {
       setModuleLoading(true);
       setModuleError(null);
+      setModuleNotice(null);
       const nextMembers = await api.workspaceMembers(token, workspace.id);
       setMembers(nextMembers);
     } catch (err) {
@@ -271,6 +501,7 @@ export function WorkspaceShell({
     try {
       setModuleLoading(true);
       setModuleError(null);
+      setModuleNotice(null);
       const nextLogs = await api.auditLogs(token, workspace.id);
       setAuditLogs(nextLogs);
     } catch (err) {
@@ -280,22 +511,70 @@ export function WorkspaceShell({
     }
   }
 
-  async function loadAdvancedDashboard() {
+  async function handleDeleteAuditLog(log: AuditLogRecord) {
+    const confirmed = window.confirm('确认删除这条审计日志吗？删除后仅从当前企业工作区审计日志中移除。');
+    if (!confirmed) return;
+    try {
+      setDeletingAuditLogId(log.id);
+      setModuleError(null);
+      setModuleNotice(null);
+      await api.deleteAuditLog(token, workspace.id, log.id);
+      setAuditLogs((logs) => logs.filter((item) => item.id !== log.id));
+      setModuleNotice('审计日志已删除，仅影响当前企业工作区。');
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '审计日志删除失败');
+    } finally {
+      setDeletingAuditLogId(null);
+    }
+  }
+
+  async function handleDeleteAllAuditLogs() {
+    const confirmed = window.confirm('确认统一删除当前企业工作区的全部审计日志吗？该操作不会影响个人工作区或其他企业工作区。');
+    if (!confirmed) return;
+    try {
+      setAuditBulkDeleting(true);
+      setModuleError(null);
+      setModuleNotice(null);
+      const result = await api.deleteAuditLogs(token, workspace.id);
+      setAuditLogs([]);
+      setModuleNotice(`已统一删除 ${result.deleted_count} 条审计日志，仅影响当前企业工作区。`);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '审计日志统一删除失败');
+    } finally {
+      setAuditBulkDeleting(false);
+    }
+  }
+
+  async function handleDeleteAuditLogsByRetention(retentionDays: number) {
+    const confirmed = window.confirm(`确认定时删除当前企业工作区中超过 ${retentionDays} 天的审计日志吗？`);
+    if (!confirmed) return;
+    try {
+      setAuditRetentionDeleting(true);
+      setModuleError(null);
+      setModuleNotice(null);
+      const result = await api.deleteAuditLogs(token, workspace.id, retentionDays);
+      await loadAuditLogs();
+      setModuleNotice(`已删除超过 ${retentionDays} 天的审计日志 ${result.deleted_count} 条。`);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '审计日志定时删除失败');
+    } finally {
+      setAuditRetentionDeleting(false);
+    }
+  }
+
+  async function loadAdvancedDashboard(documentIds = selectedGraphDocumentIds) {
     try {
       setModuleLoading(true);
       setModuleError(null);
-      const [overview, graph, tools, notifications, deployment] = await Promise.all([
+      setModuleNotice(null);
+      const [overview, graph, notifications] = await Promise.all([
         api.advancedOverview(token, workspace.id),
-        api.knowledgeGraph(token, workspace.id),
-        api.toolCenter(token, workspace.id),
-        api.advancedNotifications(token, workspace.id),
-        api.deploymentStatus(token, workspace.id)
+        api.knowledgeGraph(token, workspace.id, documentIds),
+        api.advancedNotifications(token, workspace.id)
       ]);
       setAdvancedOverview(overview);
       setKnowledgeGraph(graph);
-      setToolStatuses(tools);
       setAdvancedNotifications(notifications);
-      setDeploymentStatuses(deployment);
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '高级驾驶舱加载失败');
     } finally {
@@ -303,12 +582,49 @@ export function WorkspaceShell({
     }
   }
 
+  async function handleRebuildKnowledgeGraph() {
+    const confirmed = window.confirm('确认重建当前工作区知识图谱吗？系统会清理旧的 Neo4j 图谱节点和关系，并根据当前文档重新抽取实体关系。');
+    if (!confirmed) return;
+    try {
+      setModuleLoading(true);
+      setModuleError(null);
+      setModuleNotice(null);
+      await api.rebuildKnowledgeGraph(token, workspace.id);
+      const [overview, graph, notifications] = await Promise.all([
+        api.advancedOverview(token, workspace.id),
+        api.knowledgeGraph(token, workspace.id, selectedGraphDocumentIds),
+        api.advancedNotifications(token, workspace.id)
+      ]);
+      setAdvancedOverview(overview);
+      setKnowledgeGraph(graph);
+      setAdvancedNotifications(notifications);
+      setModuleNotice('已按当前工作区文档重新生成 Neo4j 知识图谱。');
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '知识图谱重建失败');
+    } finally {
+      setModuleLoading(false);
+    }
+  }
+
+  function handleGraphDocumentSelectionChange(documentIds: string[]) {
+    setSelectedGraphDocumentIds(documentIds);
+    void loadAdvancedDashboard(documentIds);
+  }
+
   async function handleAddMember() {
     const email = memberEmail.trim();
-    if (!email) return;
+    if (!email) {
+      setModuleError('请输入成员邮箱。');
+      return;
+    }
+    if (!MEMBER_EMAIL_PATTERN.test(email)) {
+      setModuleError('请输入正确的成员邮箱。');
+      return;
+    }
     try {
       setMemberSaving(true);
       setModuleError(null);
+      setModuleNotice(null);
       await api.addWorkspaceMember(
         token,
         workspace.id,
@@ -319,6 +635,7 @@ export function WorkspaceShell({
       setMemberEmail('');
       setMemberDepartment('');
       setMemberRole('member');
+      setModuleNotice('成员添加成功，权限仅作用于当前企业工作区。');
       await loadMembers();
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '成员添加失败');
@@ -331,6 +648,7 @@ export function WorkspaceShell({
     try {
       setMemberActionId(member.id);
       setModuleError(null);
+      setModuleNotice(null);
       await api.updateWorkspaceMember(
         token,
         workspace.id,
@@ -338,9 +656,31 @@ export function WorkspaceShell({
         role,
         member.department
       );
+      setModuleNotice('成员角色已更新。');
       await loadMembers();
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '角色更新失败');
+    } finally {
+      setMemberActionId(null);
+    }
+  }
+
+  async function handleUpdateMemberDepartment(member: WorkspaceMember, department: string) {
+    try {
+      setMemberActionId(member.id);
+      setModuleError(null);
+      setModuleNotice(null);
+      await api.updateWorkspaceMember(
+        token,
+        workspace.id,
+        member.id,
+        member.role,
+        department
+      );
+      setModuleNotice('成员部门已更新。');
+      await loadMembers();
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '部门更新失败');
     } finally {
       setMemberActionId(null);
     }
@@ -352,7 +692,9 @@ export function WorkspaceShell({
     try {
       setMemberActionId(member.id);
       setModuleError(null);
+      setModuleNotice(null);
       await api.removeWorkspaceMember(token, workspace.id, member.id);
+      setModuleNotice('成员已从当前企业工作区移除，历史审计记录保留。');
       await loadMembers();
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '成员移除失败');
@@ -367,18 +709,23 @@ export function WorkspaceShell({
     const userMessage: ChatMessageView = {
       id: `user-${Date.now()}`,
       role: 'user',
-      content: question
+      content: question,
+      useKnowledgeBase: useKnowledgeBaseForChat,
+      createdAt: new Date().toISOString()
     };
     try {
       setChatLoading(true);
       setModuleError(null);
+      setModuleNotice(null);
       setChatQuestion('');
       setChatMessages((messages) => [...messages, userMessage]);
       const response: ChatAskResponse = await api.askChat(
         token,
         workspace.id,
         question,
-        chatSessionId
+        chatSessionId,
+        useKnowledgeBaseForChat ? selectedKnowledgeDocumentIds : [],
+        useKnowledgeBaseForChat
       );
       setChatSessionId(response.session.id);
       setChatMessages((messages) => [
@@ -387,10 +734,19 @@ export function WorkspaceShell({
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: response.answer,
-          sources: response.sources,
-          modelName: response.model_name
+          sources: extractChatSources(response),
+          modelName: response.model_name,
+          useKnowledgeBase: response.use_knowledge_base,
+          createdAt: new Date().toISOString()
         }
       ]);
+      setModuleNotice(
+        useKnowledgeBaseForChat
+          ? workspace.type === 'enterprise'
+            ? '企业 RAG 问答已完成，引用来源限定在当前企业工作区。'
+            : '个人 RAG 问答已完成，引用来源限定在当前个人工作区。'
+          : '普通大模型对话已完成，未使用知识库检索。'
+      );
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '问答失败');
     } finally {
@@ -398,8 +754,48 @@ export function WorkspaceShell({
     }
   }
 
+  function handlePrepareQuestion(question: string, documentIds?: string[]) {
+    if (documentIds) {
+      setSelectedKnowledgeDocumentIds(documentIds);
+      setUseKnowledgeBaseForChat(documentIds.length > 0);
+    }
+    setChatQuestion(question);
+    setActivePage('chat');
+  }
+
+  function handleDeleteChatTurn(messageId: string) {
+    const confirmed = window.confirm(
+      workspace.type === 'enterprise'
+        ? '确认删除这条企业问答历史吗？'
+        : '确认删除这条问答历史吗？'
+    );
+    if (!confirmed) return;
+    setChatMessages((messages) => {
+      const startIndex = messages.findIndex((message) => message.id === messageId);
+      if (startIndex < 0) return messages;
+      const nextUserIndex = messages.findIndex(
+        (message, index) => index > startIndex && message.role === 'user'
+      );
+      const endIndex = nextUserIndex > -1 ? nextUserIndex : messages.length;
+      return messages.filter((_, index) => index < startIndex || index >= endIndex);
+    });
+    setModuleNotice('当前会话中的问答记录已删除。');
+  }
+
+  function handleClearChatHistory() {
+    const confirmed = window.confirm(
+      workspace.type === 'enterprise'
+        ? '确认清空当前企业问答历史吗？'
+        : '确认清空当前会话历史吗？'
+    );
+    if (!confirmed) return;
+    setChatMessages([]);
+    setChatSessionId(null);
+    setModuleNotice('当前会话历史已清空。');
+  }
+
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${workspace.type === 'enterprise' ? 'enterprise-shell' : 'personal-shell'}`}>
       <aside className="sidebar">
         <div className="brand-block">
           <img className="brand-logo" src="/qizhiyun-logo.png" alt="企知云" />
@@ -407,6 +803,11 @@ export function WorkspaceShell({
             <strong>企业知识平台</strong>
             <span>{workspace.type === 'enterprise' ? '企业空间' : '个人空间'}</span>
           </div>
+        </div>
+        <div className="sidebar-context">
+          <span>{workspace.type === 'enterprise' ? 'Enterprise RAG' : 'Personal RAG'}</span>
+          <strong>{workspace.name}</strong>
+          <small>{workspace.type === 'enterprise' ? `角色 ${workspace.role || 'member'}` : 'owner · 私有空间'}</small>
         </div>
 
         <nav className="sidebar-nav" aria-label="工作区导航">
@@ -424,16 +825,30 @@ export function WorkspaceShell({
             );
           })}
         </nav>
+        <div className="sidebar-footer">
+          <span>Workspace ID</span>
+          <strong>{workspace.id.slice(0, 8)}</strong>
+        </div>
       </aside>
 
       <section className="workbench">
         <header className="workbench-header">
-          <div>
+          <div className="workbench-title-block">
             <p className="eyebrow">{workspaceLabel}</p>
-            <h1>{workspace.name}</h1>
-            <span>{user.email}</span>
+            <h1>{workspace.type === 'personal' ? `${currentUserName} 的个人工作区` : workspace.name}</h1>
+            <span>
+              {workspace.type === 'personal'
+                ? `当前用户：${currentUserName}`
+                : `当前用户：${currentUserName}｜角色：${workspace.role || 'member'}`}
+            </span>
+            <p className="workspace-scope-note">
+              {workspace.type === 'personal'
+                ? '当前空间：个人工作区，数据仅个人可见，不与企业工作区同步。'
+                : '当前空间：企业工作区，数据仅在当前企业内部可见，不与个人工作区同步。'}
+            </p>
           </div>
           <div className="header-actions">
+            <span className="workspace-mode-chip">{workspace.type === 'enterprise' ? '企业版' : '个人版'}</span>
             <button className="ghost-button" onClick={onBackToWorkspaces}>
               <ArrowLeftRight size={18} aria-hidden="true" />
               切换工作区
@@ -445,100 +860,179 @@ export function WorkspaceShell({
           </div>
         </header>
 
-        {activePage === 'documents' ? (
-          <DocumentsPanel
+        {workspace.type === 'personal' ? (
+          <PersonalWorkspacePanel
+            activePage={activePage as PersonalPageKey}
+            currentNavLabel={currentNav.label}
+            user={user}
+            workspace={workspace}
             documents={documents}
-            currentNavLabel={currentNav.label}
-            loading={moduleLoading}
-            uploading={uploading}
-            selectedFile={selectedFile}
-            deletingDocumentId={deletingDocumentId}
-            error={moduleError}
-            onFileChange={handleFileChange}
-            onUpload={handleUpload}
-            onDelete={handleDeleteDocument}
-            onRefresh={loadWorkspaceModules}
-          />
-        ) : activePage === 'knowledge' ? (
-          <KnowledgePanel
-            currentNavLabel={currentNav.label}
             knowledgeBase={knowledgeBase}
-            documents={documents}
             chunks={knowledgeChunks}
             searchQuery={searchQuery}
             searchResults={searchResults}
+            selectedFile={selectedFiles[0] ?? null}
+            selectedFiles={selectedFiles}
+            documentContents={documentContents}
+            chatQuestion={chatQuestion}
+            chatMessages={chatMessages}
+            selectedKnowledgeDocumentIds={selectedKnowledgeDocumentIds}
+            useKnowledgeBaseForChat={useKnowledgeBaseForChat}
+            activeChatModelName={activeChatModelName}
+            workspaceSettings={workspaceSettings}
+            advancedOverview={advancedOverview}
+            knowledgeGraph={knowledgeGraph}
+            selectedGraphDocumentIds={selectedGraphDocumentIds}
+            notifications={advancedNotifications}
             loading={moduleLoading}
+            uploading={uploading}
             searching={searching}
+            chatLoading={chatLoading}
+            deletingDocumentId={deletingDocumentId}
+            deletingDocumentIds={deletingDocumentIds}
+            settingSavingKey={settingSavingKey}
+            settingTestingKey={settingTestingKey}
             error={moduleError}
+            notice={moduleNotice}
+            knowledgeDocumentFilter={knowledgeDocumentFilter}
+            onNavigate={(page) => setActivePage(page)}
+            onFileChange={handleFileChange}
+            onUpload={handleUpload}
+            onDeleteDocument={handleDeleteDocument}
+            onDeleteDocuments={handleDeleteDocuments}
+            onLoadDocumentContent={handleLoadDocumentContent}
+            onSaveWorkspaceSetting={handleSaveWorkspaceSetting}
+            onTestWorkspaceModelConnection={handleTestWorkspaceModelConnection}
+            onRefreshModules={loadWorkspaceModules}
+            onRefreshAdvanced={loadAdvancedDashboard}
+            onRebuildGraph={handleRebuildKnowledgeGraph}
             onSearchQueryChange={setSearchQuery}
+            onKnowledgeDocumentFilterChange={setKnowledgeDocumentFilter}
             onSearch={handleSearch}
             onClearSearch={handleClearSearch}
-            onRefresh={loadWorkspaceModules}
-          />
-        ) : activePage === 'chat' ? (
-          <ChatPanel
-            currentNavLabel={currentNav.label}
-            messages={chatMessages}
-            question={chatQuestion}
-            loading={chatLoading}
-            error={moduleError}
             onQuestionChange={setChatQuestion}
+            onSelectedKnowledgeDocumentIdsChange={setSelectedKnowledgeDocumentIds}
+            onSelectedGraphDocumentIdsChange={handleGraphDocumentSelectionChange}
+            onUseKnowledgeBaseForChatChange={setUseKnowledgeBaseForChat}
             onAsk={handleAskChat}
+            onPrepareQuestion={handlePrepareQuestion}
+            onDeleteChatTurn={handleDeleteChatTurn}
+            onClearChatHistory={handleClearChatHistory}
           />
-        ) : activePage === 'members' ? (
-          <MembersPanel
+        ) : (
+          <EnterpriseWorkspacePanel
+            activePage={activePage as EnterprisePageKey}
             currentNavLabel={currentNav.label}
+            user={user}
+            workspace={workspace}
+            documents={documents}
+            knowledgeBase={knowledgeBase}
+            chunks={knowledgeChunks}
             members={members}
-            currentUserId={user.id}
-            canManage={canManageMembers}
-            canGrantAdmin={workspace.role === 'owner'}
+            auditLogs={auditLogs}
+            advancedOverview={advancedOverview}
+            knowledgeGraph={knowledgeGraph}
+            selectedGraphDocumentIds={selectedGraphDocumentIds}
+            notifications={advancedNotifications}
+            searchQuery={searchQuery}
+            searchResults={searchResults}
+            selectedFile={selectedFiles[0] ?? null}
+            selectedFiles={selectedFiles}
+            documentContents={documentContents}
+            chatQuestion={chatQuestion}
+            chatMessages={chatMessages}
+            selectedKnowledgeDocumentIds={selectedKnowledgeDocumentIds}
+            useKnowledgeBaseForChat={useKnowledgeBaseForChat}
+            activeChatModelName={activeChatModelName}
+            workspaceSettings={workspaceSettings}
+            memberEmail={memberEmail}
+            memberDepartment={memberDepartment}
+            memberRole={memberRole}
             loading={moduleLoading}
-            saving={memberSaving}
-            actionMemberId={memberActionId}
+            uploading={uploading}
+            searching={searching}
+            chatLoading={chatLoading}
+            memberSaving={memberSaving}
+            deletingDocumentId={deletingDocumentId}
+            deletingDocumentIds={deletingDocumentIds}
+            memberActionId={memberActionId}
+            deletingAuditLogId={deletingAuditLogId}
+            auditBulkDeleting={auditBulkDeleting}
+            auditRetentionDeleting={auditRetentionDeleting}
+            settingSavingKey={settingSavingKey}
+            settingTestingKey={settingTestingKey}
             error={moduleError}
-            email={memberEmail}
-            department={memberDepartment}
-            role={memberRole}
+            notice={moduleNotice}
+            knowledgeDocumentFilter={knowledgeDocumentFilter}
+            canManageMembers={canManageMembers}
+            canGrantAdmin={workspace.role === 'owner'}
+            onNavigate={(page) => setActivePage(page)}
+            onFileChange={handleFileChange}
+            onUpload={handleUpload}
+            onDeleteDocument={handleDeleteDocument}
+            onDeleteDocuments={handleDeleteDocuments}
+            onLoadDocumentContent={handleLoadDocumentContent}
+            onSaveWorkspaceSetting={handleSaveWorkspaceSetting}
+            onTestWorkspaceModelConnection={handleTestWorkspaceModelConnection}
+            onRefreshModules={loadWorkspaceModules}
+            onRefreshEnterpriseDashboard={loadEnterpriseDashboard}
+            onRefreshAdvanced={loadAdvancedDashboard}
+            onRebuildGraph={handleRebuildKnowledgeGraph}
+            onRefreshMembers={loadMembers}
+            onRefreshAuditLogs={loadAuditLogs}
+            onDeleteAuditLog={handleDeleteAuditLog}
+            onDeleteAllAuditLogs={handleDeleteAllAuditLogs}
+            onDeleteAuditLogsByRetention={handleDeleteAuditLogsByRetention}
+            onSearchQueryChange={setSearchQuery}
+            onKnowledgeDocumentFilterChange={setKnowledgeDocumentFilter}
+            onSearch={handleSearch}
+            onClearSearch={handleClearSearch}
+            onQuestionChange={setChatQuestion}
+            onSelectedKnowledgeDocumentIdsChange={setSelectedKnowledgeDocumentIds}
+            onSelectedGraphDocumentIdsChange={handleGraphDocumentSelectionChange}
+            onUseKnowledgeBaseForChatChange={setUseKnowledgeBaseForChat}
+            onAsk={handleAskChat}
+            onPrepareQuestion={handlePrepareQuestion}
+            onDeleteChatTurn={handleDeleteChatTurn}
+            onClearChatHistory={handleClearChatHistory}
             onEmailChange={setMemberEmail}
             onDepartmentChange={setMemberDepartment}
             onRoleChange={setMemberRole}
             onAddMember={handleAddMember}
             onUpdateRole={handleUpdateMemberRole}
+            onUpdateDepartment={handleUpdateMemberDepartment}
             onRemoveMember={handleRemoveMember}
-            onRefresh={loadMembers}
-          />
-        ) : activePage === 'audit' ? (
-          <AuditPanel
-            currentNavLabel={currentNav.label}
-            logs={auditLogs}
-            loading={moduleLoading}
-            error={moduleError}
-            onRefresh={loadAuditLogs}
-          />
-        ) : activePage === 'advanced' ? (
-          <AdvancedPanel
-            currentNavLabel={currentNav.label}
-            overview={advancedOverview}
-            graph={knowledgeGraph}
-            tools={toolStatuses}
-            notifications={advancedNotifications}
-            deployment={deploymentStatuses}
-            loading={moduleLoading}
-            error={moduleError}
-            onRefresh={loadAdvancedDashboard}
-          />
-        ) : (
-          <DefaultPanel
-            activePage={activePage}
-            workspace={workspace}
-            currentNavLabel={currentNav.label}
-            knowledgeBase={knowledgeBase}
-            latestDocuments={latestDocuments}
           />
         )}
       </section>
     </main>
   );
+}
+
+function extractChatSources(response: ChatAskResponse): KnowledgeChunk[] {
+  const candidates = [
+    response.sources,
+    response.references,
+    response.chunks,
+    response.citations,
+    response.source_chunks,
+    response.retrieved_chunks
+  ];
+  return candidates.find((items) => Array.isArray(items) && items.length > 0) ?? [];
+}
+
+function getActiveChatModelName(
+  workspaceType: Workspace['type'],
+  settings: WorkspaceSettingRecord[]
+): string {
+  const settingKey =
+    workspaceType === 'enterprise' ? 'enterprise_model_api_config' : 'personal_model_config';
+  const setting = settings.find((item) => item.setting_key === settingKey);
+  const modelName = setting?.setting_value?.model_name;
+  const displayName = typeof modelName === 'string' && modelName.trim() ? modelName : 'deepseek-v4-flash';
+  return setting?.setting_value?.api_key_configured
+    ? `${displayName}（API已配置）`
+    : `${displayName}（未配置工作区API）`;
 }
 
 function DocumentsPanel({
@@ -585,7 +1079,7 @@ function DocumentsPanel({
           <Upload size={24} aria-hidden="true" />
           <div>
             <strong>{selectedFile ? selectedFile.name : '选择要上传的文档'}</strong>
-            <span>{selectedFile ? formatFileSize(selectedFile.size) : '支持常见办公文档和文本文件'}</span>
+            <span>{selectedFile ? formatFileSize(selectedFile.size) : '支持常见办公文档、文本文件和资产文件'}</span>
           </div>
         </div>
         <div className="upload-actions">
@@ -594,7 +1088,7 @@ function DocumentsPanel({
             <input
               type="file"
               onChange={onFileChange}
-              accept=".txt,.md,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv"
+              accept=".pdf,.docx,.txt,.md,.xlsx,.csv,.pptx,.jpg,.jpeg,.png,.mp3,.mp4,.zip"
             />
           </label>
           <button
@@ -1009,7 +1503,7 @@ function MembersPanel({
               <div className="member-row" key={member.id}>
                 <span>
                   <strong>{member.username}</strong>
-                  <small>{member.email}</small>
+                  <small>{maskEmail(member.email)}</small>
                 </span>
                 <span>
                   {canEditRow ? (
@@ -1093,8 +1587,8 @@ function AuditPanel({
                 <span>{formatDate(log.created_at)}</span>
               </div>
               <p>
-                操作者：{log.user_id || '系统'} · 目标：{log.target_type || '无'} /{' '}
-                {log.target_id || '无'}
+                操作者：{log.user_id ? '用户' : '系统'} · 目标：{log.target_type || '无'} /{' '}
+                {shortId(log.target_id)}
               </p>
               <code>{formatAuditDetail(log.detail)}</code>
             </article>
@@ -1109,9 +1603,7 @@ function AdvancedPanel({
   currentNavLabel,
   overview,
   graph,
-  tools,
   notifications,
-  deployment,
   loading,
   error,
   onRefresh
@@ -1119,9 +1611,7 @@ function AdvancedPanel({
   currentNavLabel: string;
   overview: AdvancedOverview | null;
   graph: KnowledgeGraph | null;
-  tools: ToolStatus[];
   notifications: AdvancedNotification[];
-  deployment: DeploymentStatus[];
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
@@ -1136,7 +1626,7 @@ function AdvancedPanel({
         <div>
           <p className="eyebrow">{currentNavLabel}</p>
           <h2>V5 高级驾驶舱</h2>
-          <p>集中查看知识资产、图谱预览、工具接入、通知动态和私有化部署状态。</p>
+          <p>集中查看知识资产、图谱预览和工作区动态。</p>
         </div>
         <button className="ghost-button" onClick={onRefresh} disabled={loading}>
           <RefreshCw size={18} aria-hidden="true" />
@@ -1169,7 +1659,7 @@ function AdvancedPanel({
         />
       </div>
 
-      <div className="advanced-grid">
+      <div className="advanced-grid business">
         <section className="advanced-section graph-section">
           <div className="section-title">
             <Network size={20} aria-hidden="true" />
@@ -1200,30 +1690,6 @@ function AdvancedPanel({
 
         <section className="advanced-section">
           <div className="section-title">
-            <Wrench size={20} aria-hidden="true" />
-            <div>
-              <h3>工具中心</h3>
-              <span>Milvus、Neo4j、Rerank、MinIO、n8n 等接入状态</span>
-            </div>
-          </div>
-          <div className="tool-grid">
-            {tools.map((tool) => (
-              <article className="tool-card" key={tool.key}>
-                <div>
-                  <strong>{tool.label}</strong>
-                  <StatusBadge value={tool.status} />
-                </div>
-                <p>{tool.description}</p>
-                {tool.endpoint && <code>{tool.endpoint}</code>}
-              </article>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <div className="advanced-grid secondary">
-        <section className="advanced-section">
-          <div className="section-title">
             <Bell size={20} aria-hidden="true" />
             <div>
               <h3>通知中心</h3>
@@ -1244,28 +1710,6 @@ function AdvancedPanel({
                 </article>
               ))
             )}
-          </div>
-        </section>
-
-        <section className="advanced-section">
-          <div className="section-title">
-            <Server size={20} aria-hidden="true" />
-            <div>
-              <h3>部署状态</h3>
-              <span>只展示运行状态，不展示账号、密码和密钥</span>
-            </div>
-          </div>
-          <div className="deployment-list">
-            {deployment.map((item) => (
-              <article key={item.key}>
-                <div>
-                  <strong>{item.label}</strong>
-                  <StatusBadge value={item.status} />
-                </div>
-                <code>{item.value}</code>
-                <p>{item.description}</p>
-              </article>
-            ))}
           </div>
         </section>
       </div>
@@ -1303,8 +1747,8 @@ function DefaultPanel({
       <p>{pageDescription(activePage, workspace.type)}</p>
       <div className="metric-grid">
         <div>
-          <span>工作区 ID</span>
-          <strong>{workspace.id}</strong>
+          <span>工作区标识</span>
+          <strong>{shortId(workspace.id)}</strong>
         </div>
         <div>
           <span>角色</span>
@@ -1356,7 +1800,6 @@ function statusText(value: string, kind: StatusBadgeKind = 'default') {
       configured: '已配置',
       missing: '待配置',
       'milvus-configured': 'Milvus 已配置',
-      'faiss-ready': 'FAISS 就绪',
       'milvus-ready': 'Milvus 就绪',
       'neo4j-ready': 'Neo4j 就绪',
       'sqlite-ready': 'SQLite 就绪',
@@ -1366,6 +1809,8 @@ function statusText(value: string, kind: StatusBadgeKind = 'default') {
       parsed: '已解析',
       indexing: '入库中',
       indexed: '已入库',
+      unsupported: '暂不支持解析',
+      asset_only: '仅保存',
       failed: '失败'
     },
     parse: {
@@ -1373,12 +1818,14 @@ function statusText(value: string, kind: StatusBadgeKind = 'default') {
       pending: '待解析',
       parsing: '解析中',
       parsed: '已解析',
+      unsupported: '暂不支持解析',
       failed: '解析失败'
     },
     index: {
       pending: '待入库',
       indexing: '入库中',
       indexed: '已入库',
+      asset_only: '仅保存',
       failed: '入库失败'
     }
   };
@@ -1398,6 +1845,8 @@ function actionText(action: string) {
     'member.removed': '移除成员',
     'document.created': '创建文档记录',
     'document.uploaded': '上传文档',
+    'document.asset_saved': '保存文件资产',
+    'document.parsed': '解析文档',
     'document.deleted': '删除文档',
     'chat.asked': '发起问答'
   };
@@ -1415,13 +1864,8 @@ function formatFileSize(size: number) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  }).format(new Date(value));
+function formatDate(value?: string | null) {
+  return formatBeijingDateTime(value);
 }
 
 function pageTitle(page: PageKey, type: Workspace['type']) {
@@ -1445,7 +1889,7 @@ function pageDescription(page: PageKey, type: Workspace['type']) {
     knowledge: '查看知识库状态、文档来源和后续入库进度。',
     chat: 'V3 接入普通对话、RAG 问答和来源追溯。',
     settings: '管理模型、向量库、Webhook、存储等工作区级配置。',
-    advanced: 'V5 汇总知识资产、知识图谱、工具中心、通知中心和部署状态。',
+    advanced: 'V5 汇总知识资产、知识图谱预览和工作区动态。',
     members: 'V4 将实现邀请成员、移除成员、角色权限和文档权限。',
     audit: '记录登录、文档、知识库、问答、工具、设置和权限操作。'
   };

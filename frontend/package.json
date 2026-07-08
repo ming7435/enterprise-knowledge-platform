@@ -8,10 +8,12 @@
     "build": "tsc && vite build"
   },
   "dependencies": {
+    "@types/three": "^0.185.0",
     "@vitejs/plugin-react": "latest",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "three": "^0.185.0",
     "vite": "latest"
   },
   "devDependencies": {
