@@ -1374,6 +1374,7 @@ _RELATION_SUBJECT_OBJECT_HINTS = [
     ("入库", "入库", "流程关系"),
     ("记录", "记录", "记录关系"),
     ("提供", "提供", "能力关系"),
+    ("应用于", "应用于", "应用关系"),
     ("depends", "依赖", "依赖关系"),
     ("contain", "包含", "组成关系"),
     ("connect", "连接", "连接关系"),
@@ -1411,7 +1412,45 @@ _GENERIC_ENTITY_NAMES = {
     "节点",
     "按钮",
     "用户",
+    "公司",
+    "领域",
+    "行业",
 }
+
+_NOISY_ENTITY_PREFIXES = (
+    "包括",
+    "包含",
+    "并通过",
+    "通过",
+    "经过",
+    "如果",
+    "还将",
+    "同时",
+    "用于",
+    "进行",
+    "实现",
+    "支持",
+    "提供",
+    "根据",
+    "当前",
+)
+
+_NOISY_ENTITY_FRAGMENTS = (
+    "能力集成",
+    "候选片段",
+    "参数方案",
+    "结果推送",
+    "等结构",
+    "等节点",
+    "等节",
+    "可用于",
+    "用于检索",
+    "进行问答",
+    "结合大模型",
+    "返回引用来源",
+    "进入市场",
+    "行业/领域",
+)
 
 _RELATION_NOUN_SUFFIXES = (
     "系统",
@@ -1687,6 +1726,16 @@ def _is_valid_entity(token: str) -> bool:
     if key in _ENTITY_STOP_WORDS:
         return False
     if token in _GENERIC_ENTITY_NAMES:
+        return False
+    if token in _RELATION_VERBS:
+        return False
+    if "/" in token and not (_API_ENTITY_PATTERN.fullmatch(token) or _FILE_ENTITY_PATTERN.fullmatch(token)):
+        return False
+    if any(token.startswith(prefix) and len(token) > len(prefix) + 2 for prefix in _NOISY_ENTITY_PREFIXES):
+        return False
+    if any(fragment in token for fragment in _NOISY_ENTITY_FRAGMENTS):
+        return False
+    if re.search(r"[：:]", token) and len(token) > 16 and not _API_ENTITY_PATTERN.fullmatch(token):
         return False
     if re.search(r"[\u4e00-\u9fffA-Za-z0-9]{2,}(?:和|及|与)[\u4e00-\u9fffA-Za-z0-9]{2,}", token):
         return False

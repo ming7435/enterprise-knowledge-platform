@@ -23,6 +23,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { DocumentRecord, KnowledgeGraph, KnowledgeGraphEdge, KnowledgeGraphNode } from '../types';
 
 type GraphMode = '2d' | '3d';
+type ResultView = 'graph' | 'table' | 'text' | 'code';
 
 interface KnowledgeGraphExplorerProps {
   graph: KnowledgeGraph | null;
@@ -174,6 +175,7 @@ export function KnowledgeGraphExplorer({
   onRebuild
 }: KnowledgeGraphExplorerProps) {
   const [mode, setMode] = useState<GraphMode>('2d');
+  const [resultView, setResultView] = useState<ResultView>('graph');
   const [query, setQuery] = useState('');
   const [enabledTypes, setEnabledTypes] = useState<string[]>([]);
   const [selectedNode, setSelectedNode] = useState<KnowledgeGraphNode | null>(null);
@@ -216,6 +218,10 @@ export function KnowledgeGraphExplorer({
     () => edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
     [edges, visibleNodeIds]
   );
+  const filteredNodeById = useMemo(
+    () => new Map(filteredNodes.map((node) => [node.id, node])),
+    [filteredNodes]
+  );
 
   useEffect(() => {
     setPositions(computeLayout(filteredNodes, filteredEdges));
@@ -223,6 +229,7 @@ export function KnowledgeGraphExplorer({
 
   function resetView() {
     setQuery('');
+    setResultView('graph');
     setEnabledTypes(availableTypes);
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -475,23 +482,37 @@ export function KnowledgeGraphExplorer({
           <div className="graph-canvas-column">
             <div className="graph-canvas-toolbar" aria-label="图谱场景控制">
               <div className="segmented-control" role="group" aria-label="图谱模式">
-                <button type="button" className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}>
+                <button
+                  type="button"
+                  className={mode === '2d' && resultView === 'graph' ? 'active' : ''}
+                  onClick={() => {
+                    setResultView('graph');
+                    setMode('2d');
+                  }}
+                >
                   <Share2 size={16} aria-hidden="true" />
                   2D
                 </button>
-                <button type="button" className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}>
+                <button
+                  type="button"
+                  className={mode === '3d' && resultView === 'graph' ? 'active' : ''}
+                  onClick={() => {
+                    setResultView('graph');
+                    setMode('3d');
+                  }}
+                >
                   <Box size={16} aria-hidden="true" />
                   3D
                 </button>
               </div>
-              <button type="button" onClick={fitView} disabled={loading || !!disabled}>
+              <button type="button" onClick={fitView} disabled={loading || !!disabled || resultView !== 'graph'}>
                 <Maximize2 size={16} aria-hidden="true" />
                 适配
               </button>
-              <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} disabled={mode !== '2d'}>
+              <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} disabled={mode !== '2d' || resultView !== 'graph'}>
                 +
               </button>
-              <button type="button" onClick={() => setZoom((value) => Math.max(0.55, value - 0.1))} disabled={mode !== '2d'}>
+              <button type="button" onClick={() => setZoom((value) => Math.max(0.55, value - 0.1))} disabled={mode !== '2d' || resultView !== 'graph'}>
                 -
               </button>
               <button type="button" onClick={resetView}>
@@ -504,49 +525,89 @@ export function KnowledgeGraphExplorer({
               </span>
             </div>
 
-            <div className="graph-stage">
-              {loading && <div className="graph-overlay">知识图谱加载中...</div>}
-              {empty && (
-                <div className="graph-overlay empty">
-                  {query.trim() ? '没有找到相关文件实体，请更换关键词或重置筛选。' : '当前工作区暂无可展示的文件实体关系图谱。'}
+            <div className="graph-result-frame">
+              <div className="graph-result-rail" role="tablist" aria-label="图谱结果视图">
+                {[
+                  ['graph', 'Graph'],
+                  ['table', 'Table'],
+                  ['text', 'Text'],
+                  ['code', 'Code']
+                ].map(([view, label]) => (
+                  <button
+                    type="button"
+                    key={view}
+                    role="tab"
+                    aria-selected={resultView === view}
+                    className={resultView === view ? 'active' : ''}
+                    onClick={() => setResultView(view as ResultView)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="graph-result-body">
+                {resultView === 'graph' ? (
+                  <div className="graph-stage">
+                    {loading && <div className="graph-overlay">知识图谱加载中...</div>}
+                    {empty && (
+                      <div className="graph-overlay empty">
+                        {query.trim() ? '没有找到相关文件实体，请更换关键词或重置筛选。' : '当前工作区暂无可展示的文件实体关系图谱。'}
+                      </div>
+                    )}
+                    {disabled || unavailable ? (
+                      <div className="graph-disabled">
+                        <Network size={40} aria-hidden="true" />
+                        <strong>{graph?.status === 'permission_denied' ? '暂无权限查看图谱' : 'Neo4j 图谱不可用'}</strong>
+                        <span>{graph?.message ?? '当前无法展示真实知识图谱。'}</span>
+                      </div>
+                    ) : mode === '2d' ? (
+                      <Graph2D
+                        svgRef={svgRef}
+                        nodes={filteredNodes}
+                        edges={filteredEdges}
+                        positions={positions}
+                        zoom={zoom}
+                        pan={pan}
+                        draggingNodeId={draggingNodeId}
+                        selectedNodeId={selectedNode?.id ?? null}
+                        onZoom={setZoom}
+                        onPan={setPan}
+                        onDragStart={setDraggingNodeId}
+                        onDragEnd={() => setDraggingNodeId(null)}
+                        onMoveNode={(nodeId, point) =>
+                          setPositions((items) => ({
+                            ...items,
+                            [nodeId]: point
+                          }))
+                        }
+                        onSelect={activateNode}
+                      />
+                    ) : (
+                      <Graph3D
+                        nodes={filteredNodes}
+                        edges={filteredEdges}
+                        selectedNodeId={selectedNode?.id ?? null}
+                        onSelect={activateNode}
+                      />
+                    )}
+                  </div>
+                ) : resultView === 'table' ? (
+                  <GraphTableView nodes={filteredNodes} edges={filteredEdges} nodeById={filteredNodeById} />
+                ) : resultView === 'text' ? (
+                  <GraphTextView edges={filteredEdges} nodeById={filteredNodeById} />
+                ) : (
+                  <GraphRawView nodes={filteredNodes} edges={filteredEdges} />
+                )}
+                {(loading || empty || disabled || unavailable) && resultView !== 'graph' && (
+                  <div className="graph-result-overlay">
+                    {loading
+                      ? '知识图谱加载中...'
+                      : empty
+                        ? '当前没有可展示的图谱结果。'
+                        : graph?.message ?? '当前无法展示真实知识图谱。'}
+                  </div>
+                )}
                 </div>
-              )}
-              {disabled || unavailable ? (
-                <div className="graph-disabled">
-                  <Network size={40} aria-hidden="true" />
-                  <strong>{graph?.status === 'permission_denied' ? '暂无权限查看图谱' : 'Neo4j 图谱不可用'}</strong>
-                  <span>{graph?.message ?? '当前无法展示真实知识图谱。'}</span>
-                </div>
-              ) : mode === '2d' ? (
-                <Graph2D
-                  svgRef={svgRef}
-                  nodes={filteredNodes}
-                  edges={filteredEdges}
-                  positions={positions}
-                  zoom={zoom}
-                  pan={pan}
-                  draggingNodeId={draggingNodeId}
-                  selectedNodeId={selectedNode?.id ?? null}
-                  onZoom={setZoom}
-                  onPan={setPan}
-                  onDragStart={setDraggingNodeId}
-                  onDragEnd={() => setDraggingNodeId(null)}
-                  onMoveNode={(nodeId, point) =>
-                    setPositions((items) => ({
-                      ...items,
-                      [nodeId]: point
-                    }))
-                  }
-                  onSelect={activateNode}
-                />
-              ) : (
-                <Graph3D
-                  nodes={filteredNodes}
-                  edges={filteredEdges}
-                  selectedNodeId={selectedNode?.id ?? null}
-                  onSelect={activateNode}
-                />
-              )}
             </div>
           </div>
 
@@ -647,6 +708,120 @@ export function KnowledgeGraphExplorer({
       </div>
     </section>
   );
+}
+
+function GraphTableView({
+  nodes,
+  edges,
+  nodeById
+}: {
+  nodes: KnowledgeGraphNode[];
+  edges: KnowledgeGraphEdge[];
+  nodeById: Map<string, KnowledgeGraphNode>;
+}) {
+  return (
+    <div className="graph-table-view" aria-label="知识图谱表格结果">
+      <div className="graph-table-section">
+        <h4>Nodes</h4>
+        <div className="graph-result-table-wrap">
+          <table className="graph-result-table">
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Type</th>
+                <th>Weight</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {nodes.slice(0, 120).map((node) => (
+                <tr key={node.id}>
+                  <td>{node.label}</td>
+                  <td>{semanticTypeLabels[semanticTypeOfNode(node)] ?? semanticTypeOfNode(node)}</td>
+                  <td>{node.weight ?? 1}</td>
+                  <td>{formatGraphValue(node.properties?.last_filename || node.properties?.filename || '暂无')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="graph-table-section">
+        <h4>Relationships</h4>
+        <div className="graph-result-table-wrap">
+          <table className="graph-result-table">
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Relationship</th>
+                <th>Target</th>
+                <th>Weight</th>
+              </tr>
+            </thead>
+            <tbody>
+              {edges.slice(0, 160).map((edge) => (
+                <tr key={edge.id}>
+                  <td>{nodeById.get(edge.source)?.label ?? edge.source}</td>
+                  <td>{edge.label || '关联'}</td>
+                  <td>{nodeById.get(edge.target)?.label ?? edge.target}</td>
+                  <td>{edge.weight ?? 1}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GraphTextView({
+  edges,
+  nodeById
+}: {
+  edges: KnowledgeGraphEdge[];
+  nodeById: Map<string, KnowledgeGraphNode>;
+}) {
+  return (
+    <div className="graph-text-view" aria-label="知识图谱文本结果">
+      {edges.length === 0 ? (
+        <p className="graph-muted">当前没有可转换为三元组的关系。</p>
+      ) : (
+        edges.slice(0, 180).map((edge) => (
+          <article key={edge.id}>
+            <strong>
+              {nodeById.get(edge.source)?.label ?? edge.source}
+              <span>{edge.label || '关联'}</span>
+              {nodeById.get(edge.target)?.label ?? edge.target}
+            </strong>
+            <p>{formatGraphValue(edge.properties?.evidence || edge.properties?.relation_type || '来自当前知识库文档的实体关系。')}</p>
+          </article>
+        ))
+      )}
+    </div>
+  );
+}
+
+function GraphRawView({ nodes, edges }: { nodes: KnowledgeGraphNode[]; edges: KnowledgeGraphEdge[] }) {
+  return (
+    <pre className="graph-code-view" aria-label="知识图谱原始结果">
+      {JSON.stringify(
+        {
+          nodes: nodes.slice(0, 120),
+          relationships: edges.slice(0, 180)
+        },
+        null,
+        2
+      )}
+    </pre>
+  );
+}
+
+function formatGraphValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '暂无';
+  if (Array.isArray(value)) return value.join('、');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
 }
 
 function Graph2D({
