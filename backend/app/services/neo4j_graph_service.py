@@ -438,45 +438,74 @@ def searchGraphNodes(
     limit: int = 20,
     document_ids: list[str] | None = None,
 ) -> dict:
+    normalized_query = query.strip()
     if not settings.neo4j_enabled:
         return _database_search_nodes(
             db,
             workspace_id=workspace_id,
-            query=query,
+            query=normalized_query,
             limit=limit,
             document_ids=document_ids,
             message="Neo4j 图数据库未启用，已在数据库回退图谱中搜索。",
         )
+    if not normalized_query:
+        return {"enabled": True, "status": "ready", "results": []}
     try:
         rows = runNeo4jQuery(
             settings,
             """
             MATCH (n:Entity {workspace_id: $workspace_id})
-            WITH n, labels(n) AS node_labels, properties(n) AS props
+            WITH n, labels(n) AS node_labels, properties(n) AS props, toLower($query) AS q
             WHERE size($document_ids) = 0
                OR props.last_document_id IN $document_ids
                OR any(item IN coalesce(props.document_ids, []) WHERE item IN $document_ids)
             WITH n, node_labels, props,
-                 toLower(coalesce(
-                    toString(props.name),
-                    toString(props.canonical_name),
-                    toString(props.aliases),
-                    toString(props.semantic_type),
-                    toString(props.entity_type),
-                    toString(props.last_filename),
-                    toString(props.content_preview),
-                    toString(props.id),
-                    ""
-                 )) AS searchable
-            WHERE searchable CONTAINS toLower($query)
+                 q,
+                 toLower(toString(coalesce(props.canonical_name, ""))) AS canonical_name,
+                 toLower(toString(coalesce(props.name, props.entity, ""))) AS entity_name,
+                 toLower(toString(coalesce(props.aliases, ""))) AS aliases,
+                 toLower(toString(coalesce(props.entity_type, ""))) AS entity_type,
+                 toLower(toString(coalesce(props.semantic_type, ""))) AS semantic_type,
+                 toLower(toString(coalesce(props.last_filename, props.filename, ""))) AS filename,
+                 toLower(toString(coalesce(props.content_preview, props.evidence, ""))) AS preview,
+                 toLower(toString(coalesce(props.id, n.id, ""))) AS node_id
+            WITH n, node_labels, props,
+                 CASE
+                   WHEN canonical_name = q THEN 1000
+                   WHEN entity_name = q THEN 980
+                   WHEN aliases CONTAINS q THEN 940
+                   WHEN canonical_name STARTS WITH q THEN 850
+                   WHEN entity_name STARTS WITH q THEN 830
+                   WHEN canonical_name CONTAINS q THEN 760
+                   WHEN entity_name CONTAINS q THEN 740
+                   WHEN entity_type = q OR semantic_type = q THEN 680
+                   WHEN filename CONTAINS q THEN 560
+                   WHEN preview CONTAINS q THEN 420
+                   WHEN node_id CONTAINS q THEN 260
+                   ELSE 0
+                 END AS match_score,
+                 CASE
+                   WHEN canonical_name = q OR canonical_name STARTS WITH q OR canonical_name CONTAINS q THEN "canonical_name"
+                   WHEN entity_name = q OR entity_name STARTS WITH q OR entity_name CONTAINS q THEN "name"
+                   WHEN aliases CONTAINS q THEN "aliases"
+                   WHEN entity_type = q OR semantic_type = q THEN "entity_type"
+                   WHEN filename CONTAINS q THEN "last_filename"
+                   WHEN preview CONTAINS q THEN "content_preview"
+                   WHEN node_id CONTAINS q THEN "id"
+                   ELSE ""
+                 END AS match_field
+            WHERE match_score > 0
             RETURN n.id AS id,
                    node_labels AS labels,
-                   props AS properties
+                   props + {match_score: match_score, match_field: match_field, match_query: $query} AS properties
+            ORDER BY match_score DESC,
+                     coalesce(toInteger(props.weight), 1) DESC,
+                     coalesce(toString(props.updated_at), "") DESC
             LIMIT $limit
             """,
             {
                 "workspace_id": workspace_id,
-                "query": query,
+                "query": normalized_query,
                 "document_ids": document_ids or [],
                 "limit": min(max(limit, 1), 50),
             },
@@ -485,12 +514,20 @@ def searchGraphNodes(
         return _database_search_nodes(
             db,
             workspace_id=workspace_id,
-            query=query,
+            query=normalized_query,
             limit=limit,
             document_ids=document_ids,
             message=f"Neo4j 图数据库暂不可用，已在数据库回退图谱中搜索：{exc}",
         )
-    return {"enabled": True, "status": "ready", "results": [_node_from_row(row) for row in rows]}
+    return {
+        "enabled": True,
+        "status": "ready",
+        "results": _rank_graph_search_results(
+            [_node_from_row(row) for row in rows],
+            normalized_query,
+            limit=limit,
+        ),
+    }
 
 
 def getNodeDetail(db: Session, settings: Settings, *, workspace_id: str, node_id: str) -> dict:
@@ -663,21 +700,100 @@ def _database_search_nodes(
     normalized = query.strip().lower()
     safe_limit = min(max(limit, 1), 50)
     if normalized:
-        results = [
-            node
-            for node in nodes
-            if normalized in node["label"].lower()
-            or normalized in " ".join(str(value).lower() for value in node["properties"].values())
-        ]
+        results = _rank_graph_search_results(nodes, query, limit=safe_limit)
     else:
-        results = nodes
+        results = sorted(nodes, key=lambda node: (-int(node.get("weight") or 1), str(node.get("label") or "")))[:safe_limit]
     return {
         "enabled": True,
         "status": "ready",
         "message": message,
         "mode": "database",
-        "results": results[:safe_limit],
+        "results": results,
     }
+
+
+def _rank_graph_search_results(nodes: list[dict], query: str, limit: int = 20) -> list[dict]:
+    normalized_query = query.strip().lower()
+    safe_limit = min(max(limit, 1), 50)
+    if not normalized_query:
+        return sorted(nodes, key=lambda node: (-int(node.get("weight") or 1), str(node.get("label") or "")))[:safe_limit]
+
+    ranked: list[dict] = []
+    for node in nodes:
+        score, field = _graph_search_score(node, normalized_query)
+        if score <= 0:
+            continue
+        enriched = dict(node)
+        properties = dict(enriched.get("properties") or {})
+        properties["match_score"] = score
+        properties["match_field"] = field
+        properties["match_query"] = query.strip()
+        enriched["properties"] = _json_safe_properties(properties)
+        ranked.append(enriched)
+
+    ranked.sort(
+        key=lambda node: (
+            -int((node.get("properties") or {}).get("match_score") or 0),
+            -int(node.get("weight") or 1),
+            str(node.get("label") or ""),
+        )
+    )
+    return ranked[:safe_limit]
+
+
+def _graph_search_score(node: dict, normalized_query: str) -> tuple[int, str]:
+    properties = dict(node.get("properties") or {})
+    node_weight = min(max(int(node.get("weight") or properties.get("weight") or 1), 1), 100)
+
+    field_groups = [
+        ("canonical_name", _string_values(properties.get("canonical_name")), 1000, 850, 760),
+        ("name", _string_values(properties.get("name"), properties.get("entity"), node.get("label")), 980, 830, 740),
+        ("aliases", _alias_values(properties.get("aliases")), 940, 800, 700),
+        ("entity_type", _string_values(properties.get("entity_type"), properties.get("semantic_type")), 680, 620, 560),
+        ("last_filename", _string_values(properties.get("last_filename"), properties.get("filename")), 560, 520, 480),
+        ("content_preview", _string_values(properties.get("content_preview"), properties.get("evidence")), 420, 380, 340),
+        ("id", _string_values(node.get("id"), properties.get("id")), 260, 230, 200),
+    ]
+
+    best_score = 0
+    best_field = ""
+    for field, values, exact_score, prefix_score, contains_score in field_groups:
+        for value in values:
+            normalized_value = value.strip().lower()
+            if not normalized_value:
+                continue
+            if normalized_value == normalized_query:
+                score = exact_score + node_weight
+            elif normalized_value.startswith(normalized_query):
+                score = prefix_score + min(node_weight, 80)
+            elif normalized_query in normalized_value:
+                score = contains_score + min(node_weight, 60)
+            else:
+                continue
+            if score > best_score:
+                best_score = score
+                best_field = field
+    return best_score, best_field
+
+
+def _string_values(*values: Any) -> list[str]:
+    result: list[str] = []
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, list):
+            result.extend(str(item) for item in value if item is not None)
+        else:
+            result.append(str(value))
+    return result
+
+
+def _alias_values(value: Any) -> list[str]:
+    values: list[str] = []
+    for item in _string_values(value):
+        values.extend(part.strip() for part in re.split(r"[,，;；、|/]+", item) if part.strip())
+        values.append(item)
+    return values
 
 
 def _database_node_detail(
@@ -1128,6 +1244,31 @@ _ENTITY_STOP_WORDS = {
     "document_id",
     "user_id",
     "tenant_id",
+    "api",
+    "contains",
+    "contain",
+    "includes",
+    "include",
+    "depends",
+    "calls",
+    "call",
+    "uses",
+    "use",
+    "references",
+    "reference",
+    "stores",
+    "store",
+    "writes",
+    "write",
+    "isolates",
+    "isolate",
+    "protects",
+    "protect",
+    "belongs",
+    "derived",
+    "storage",
+    "results",
+    "retrieval",
 }
 
 _TECH_ENTITY_PATTERN = re.compile(
@@ -1184,6 +1325,28 @@ _ENTITY_TYPE_PRIORITY = {
 }
 
 _RELATION_SUBJECT_OBJECT_HINTS = [
+    ("derived from", "派生自", "结构关系"),
+    ("belongs to", "属于", "归属关系"),
+    ("depends on", "依赖", "依赖关系"),
+    ("references", "引用", "引用关系"),
+    ("reference", "引用", "引用关系"),
+    ("contains", "包含", "组成关系"),
+    ("contain", "包含", "组成关系"),
+    ("includes", "包含", "组成关系"),
+    ("include", "包含", "组成关系"),
+    ("depends", "依赖", "依赖关系"),
+    ("calls", "调用", "调用关系"),
+    ("call", "调用", "调用关系"),
+    ("uses", "使用", "使用关系"),
+    ("use", "使用", "使用关系"),
+    ("stores", "写入", "数据写入"),
+    ("store", "写入", "数据写入"),
+    ("writes", "写入", "数据写入"),
+    ("write", "写入", "数据写入"),
+    ("isolates", "隔离", "安全关系"),
+    ("isolate", "隔离", "安全关系"),
+    ("protects", "保护", "安全关系"),
+    ("protect", "保护", "安全关系"),
     ("派生自", "派生自", "结构关系"),
     ("来源于", "来源于", "来源关系"),
     ("引用", "引用", "引用关系"),
@@ -1513,7 +1676,7 @@ def _clean_entity_token(value: str) -> str:
     else:
         normalized = re.sub(r"\s+", "", raw_value)
     normalized = re.sub(r"^(?:文件实体|API实体|接口|字段|配置|模型|知识库|工作区)[：:]", "", normalized)
-    token = normalized.strip(" -_，。；;、:：()（）[]【】<>《》\"'")
+    token = normalized.strip(" -_，。；;、:：.!?！？()（）[]【】<>《》\"'")
     return token[:90]
 
 
@@ -1547,6 +1710,14 @@ def _entity_type(token: str) -> str:
         return "file"
     if _TECH_ENTITY_PATTERN.fullmatch(normalized):
         return "technology"
+    if re.search(r"(?:Workspace|WorkSpace|PersonalWorkspace|EnterpriseWorkspace)$", normalized):
+        return "workspace"
+    if re.search(r"(?:KnowledgeBase|VectorStore|VectorIndex)$", normalized):
+        return "knowledge_base"
+    if re.search(r"(?:Auth|Acl|ACL|Permission|Policy|Security|Isolation|Role)$", normalized):
+        return "permission"
+    if re.search(r"(?:Gateway|Manager|Management|Service|Module|Controller|Dashboard|Platform|System|Center|Log)$", normalized):
+        return "module"
     if re.search(r"(?:知识库|向量库)$", compact):
         return "knowledge_base"
     if compact.endswith("工作区") or compact.endswith("工作空间"):
@@ -1659,11 +1830,20 @@ def _split_relation_objects(text: str) -> list[tuple[str, int]]:
     if not text:
         return []
     clause = re.split(r"[。；;！？?!\n]", text, maxsplit=1)[0]
+    clause = re.split(r"\b(?:by|through|via|using|with)\b|并通过|并使用|通过|使用", clause, maxsplit=1, flags=re.IGNORECASE)[0]
     results: list[tuple[str, int]] = []
-    for match in re.finditer(r"[^、,，和及与/]+", clause):
-        token = _clean_entity_token(match.group(0))
+    separator = re.compile(r"[、,，/]+|(?:和|及|与)|\s+(?:and|or)\s+", re.IGNORECASE)
+    start = 0
+    for match in separator.finditer(clause):
+        raw_token = clause[start : match.start()]
+        token = _clean_entity_token(raw_token)
         if token:
-            results.append((token, match.start()))
+            results.append((token, start + len(raw_token) - len(raw_token.lstrip())))
+        start = match.end()
+    raw_token = clause[start:]
+    token = _clean_entity_token(raw_token)
+    if token:
+        results.append((token, start + len(raw_token) - len(raw_token.lstrip())))
     return results
 
 
@@ -1872,7 +2052,7 @@ def _predicate_relation_pairs(sentence: str, positioned: list[dict]) -> list[tup
 
 
 def _choose_relation_source(before: list[dict], hint: str) -> dict:
-    if hint in {"隔离", "保护", "权限"}:
+    if hint.lower() in {"隔离", "保护", "权限", "isolates", "isolate", "protects", "protect"}:
         scoped = [
             item
             for item in before

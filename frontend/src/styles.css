@@ -2350,6 +2350,406 @@ p {
   color: #0f172a;
 }
 
+.neo4j-workbench {
+  gap: 0;
+}
+
+.graph-browser-shell {
+  overflow: hidden;
+  border: 1px solid #cbd8e6;
+  border-radius: 10px;
+  background: #eef4f8;
+  box-shadow: 0 20px 42px rgba(15, 23, 42, 0.1);
+}
+
+.graph-command-bar {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(360px, 1.4fr) auto;
+  gap: 12px;
+  align-items: center;
+  border-bottom: 1px solid #d9e4ed;
+  padding: 12px 14px;
+  background: #ffffff;
+}
+
+.graph-command-title,
+.graph-command-actions,
+.graph-canvas-toolbar,
+.graph-panel-heading,
+.graph-inspector-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.graph-command-title {
+  min-width: 0;
+}
+
+.graph-command-title > svg {
+  flex: 0 0 auto;
+  color: #0f766e;
+}
+
+.graph-command-title h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 20px;
+}
+
+.graph-command-title span {
+  display: block;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-command-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid #c9d8e5;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.graph-command-input:focus-within {
+  border-color: rgba(15, 118, 110, 0.6);
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.1);
+}
+
+.graph-command-input input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 800;
+}
+
+.graph-command-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.graph-command-actions button,
+.graph-canvas-toolbar button,
+.graph-inspector-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #ffffff;
+  color: #334155;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.graph-command-actions .graph-rebuild-button {
+  border-color: rgba(15, 118, 110, 0.42);
+  background: #0f766e;
+  color: #fff;
+}
+
+.graph-workbench-grid {
+  display: grid;
+  grid-template-columns: 270px minmax(620px, 1fr) 318px;
+  gap: 0;
+  align-items: stretch;
+  min-height: 860px;
+}
+
+.graph-left-panel,
+.graph-right-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.graph-left-panel {
+  border-right: 1px solid #d9e4ed;
+}
+
+.graph-right-panel {
+  border-left: 1px solid #d9e4ed;
+}
+
+.graph-panel-card,
+.graph-right-panel {
+  border-radius: 8px;
+}
+
+.graph-panel-card {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbe5ee;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.graph-scene-card {
+  background:
+    linear-gradient(135deg, rgba(15, 118, 110, 0.1), rgba(37, 99, 235, 0.06)),
+    #ffffff;
+}
+
+.graph-panel-heading,
+.graph-inspector-heading {
+  justify-content: space-between;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.graph-panel-heading > span,
+.graph-inspector-heading > span {
+  margin-right: auto;
+}
+
+.graph-scene-card strong {
+  color: #0f172a;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.graph-scene-card p,
+.graph-scene-card small,
+.graph-muted {
+  margin: 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.graph-type-list,
+.graph-relation-list,
+.graph-search-results,
+.graph-neighbor-list,
+.graph-inspector-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-type-list label,
+.graph-relation-list button,
+.graph-search-results button,
+.graph-neighbor-list button {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 9px;
+  background: #f8fafc;
+  color: #334155;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-search-results button {
+  grid-template-columns: 12px minmax(0, 1fr);
+}
+
+.graph-type-list label.enabled,
+.graph-relation-list button:hover,
+.graph-search-results button:hover,
+.graph-search-results button.active,
+.graph-neighbor-list button:hover {
+  border-color: rgba(15, 118, 110, 0.42);
+  background: #ecfdf5;
+  color: #0f766e;
+}
+
+.graph-type-list input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.graph-type-list i,
+.graph-relation-list i,
+.graph-search-results i,
+.graph-neighbor-list i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.graph-type-list b,
+.graph-relation-list b {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.graph-search-results span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.graph-search-results strong,
+.graph-search-results small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-search-results small,
+.graph-neighbor-list small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.graph-canvas-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  background: #edf3f7;
+}
+
+.graph-canvas-toolbar {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  min-height: 48px;
+  border-bottom: 1px solid #d9e4ed;
+  padding: 8px 10px;
+  background: #f8fafc;
+}
+
+.graph-canvas-toolbar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.graph-canvas-toolbar button:disabled,
+.graph-command-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.neo4j-workbench .graph-stage {
+  min-height: 810px;
+  border: 0;
+  border-radius: 0;
+  background:
+    linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    radial-gradient(circle at 50% 42%, rgba(15, 118, 110, 0.12), transparent 33%),
+    #fbfdff;
+  background-size: 32px 32px, 32px 32px, auto, auto;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.neo4j-workbench .graph-svg,
+.neo4j-workbench .graph-3d-canvas,
+.neo4j-workbench .graph-3d-canvas canvas {
+  height: 810px !important;
+}
+
+.graph-inspector-heading {
+  min-height: 34px;
+}
+
+.graph-inspector-heading button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #dbe5ee;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.graph-right-panel h4 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.graph-definition-list {
+  grid-template-columns: 1fr;
+}
+
+.graph-evidence-box {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dbe5ee;
+  border-radius: 8px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.graph-evidence-box strong,
+.graph-neighbor-list > strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.graph-evidence-box p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.graph-inspector-actions {
+  grid-template-columns: 1fr;
+}
+
+.graph-inspector-actions button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.graph-empty-inspector {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 28px 16px;
+  color: #64748b;
+  text-align: center;
+}
+
+.graph-empty-inspector strong {
+  color: #0f172a;
+}
+
 .notification-list article div {
   display: flex;
   align-items: center;
@@ -3535,6 +3935,27 @@ p {
   font-size: 13px;
 }
 
+@media (max-width: 1280px) {
+  .graph-workbench-grid {
+    grid-template-columns: 245px minmax(0, 1fr);
+  }
+
+  .graph-right-panel {
+    grid-column: 1 / -1;
+    border-top: 1px solid #d9e4ed;
+    border-left: 0;
+  }
+
+  .graph-command-bar {
+    grid-template-columns: minmax(220px, 0.9fr) minmax(280px, 1.2fr);
+  }
+
+  .graph-command-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 900px) {
   .auth-page,
   .workspace-page {
@@ -3644,6 +4065,26 @@ p {
   .graph-svg,
   .graph-3d-canvas {
     height: 560px;
+  }
+
+  .graph-command-bar,
+  .graph-workbench-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-left-panel,
+  .graph-right-panel {
+    border: 0;
+  }
+
+  .neo4j-workbench .graph-stage {
+    min-height: 560px;
+  }
+
+  .neo4j-workbench .graph-svg,
+  .neo4j-workbench .graph-3d-canvas,
+  .neo4j-workbench .graph-3d-canvas canvas {
+    height: 560px !important;
   }
 
   .table-head,

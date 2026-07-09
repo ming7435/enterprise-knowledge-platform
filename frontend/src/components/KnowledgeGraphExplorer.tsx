@@ -1,4 +1,21 @@
-import { Box, Maximize2, Network, RefreshCw, RotateCcw, Search, Share2, Sparkles } from 'lucide-react';
+import {
+  Box,
+  Database,
+  Eye,
+  FileText,
+  Filter,
+  GitBranch,
+  Maximize2,
+  MousePointer2,
+  Network,
+  PanelRightOpen,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Share2,
+  Sparkles,
+  X
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -260,223 +277,374 @@ export function KnowledgeGraphExplorer({
       : graph?.mode === 'database'
         ? '数据库文件实体图谱'
         : '知识图谱';
+  const typeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    nodes.forEach((node) => {
+      const type = semanticTypeOfNode(node);
+      counts.set(type, (counts.get(type) ?? 0) + 1);
+    });
+    return counts;
+  }, [nodes]);
+  const relationCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    edges.forEach((edge) => {
+      const label = edge.label || '关联';
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    });
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  }, [edges]);
+  const searchResultNodes = useMemo(
+    () =>
+      [...filteredNodes]
+        .sort((a, b) => {
+          const aScore = Number(a.properties?.match_score ?? 0) || 0;
+          const bScore = Number(b.properties?.match_score ?? 0) || 0;
+          return bScore - aScore || (b.weight ?? 1) - (a.weight ?? 1) || a.label.localeCompare(b.label);
+        })
+        .slice(0, 9),
+    [filteredNodes]
+  );
+  const selectedRelations = useMemo(
+    () =>
+      selectedNode
+        ? edges
+            .filter((edge) => edge.source === selectedNode.id || edge.target === selectedNode.id)
+            .slice(0, 10)
+        : [],
+    [edges, selectedNode]
+  );
+  const selectedDocumentId = selectedNode
+    ? String(selectedNode.properties?.last_document_id || selectedNode.properties?.document_id || '')
+    : '';
+  const selectedFilename = selectedNode
+    ? String(selectedNode.properties?.last_filename || selectedNode.properties?.filename || '暂无来源文件')
+    : '';
 
   return (
-    <section className="graph-explorer" aria-label={`${workspaceLabel}知识图谱`}>
-      <div className="graph-explorer-header">
-        <div>
-          <div className="section-title compact-title">
-            <Network size={20} aria-hidden="true" />
+    <section className="graph-explorer neo4j-workbench" aria-label={`${workspaceLabel}知识图谱`}>
+      <div className="graph-browser-shell">
+        <div className="graph-command-bar">
+          <div className="graph-command-title">
+            <Network size={22} aria-hidden="true" />
             <div>
-              <h3>知识图谱</h3>
+              <h3>知识图谱工作台</h3>
               <span>
-                {graph?.stats?.node_count ?? nodes.length} 个节点 / {graph?.stats?.edge_count ?? edges.length} 条关系
+                {sourceLabel} · {graph?.stats?.node_count ?? nodes.length} 个节点 / {graph?.stats?.edge_count ?? edges.length} 条关系
                 {graph?.partial ? ' · 已截取部分数据' : ''}
               </span>
             </div>
           </div>
-        </div>
-        <div className="graph-toolbar" aria-label="图谱控制">
-          <span className="graph-toolbar-label">图谱控制</span>
-          <div className="segmented-control" role="group" aria-label="图谱模式">
-            <button type="button" className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}>
-              <Share2 size={16} aria-hidden="true" />
-              2D
+          <label className="graph-command-input">
+            <Search size={18} aria-hidden="true" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索实体名、别名、API、文件名或证据片段"
+            />
+          </label>
+          <div className="graph-command-actions">
+            <button type="button" onClick={onRefresh} disabled={loading}>
+              <RefreshCw size={16} aria-hidden="true" />
+              刷新
             </button>
-            <button type="button" className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}>
-              <Box size={16} aria-hidden="true" />
-              3D
+            <button type="button" className="graph-rebuild-button" onClick={onRebuild ?? onRefresh} disabled={loading}>
+              <Sparkles size={16} aria-hidden="true" />
+              重建
             </button>
           </div>
-          <button type="button" onClick={fitView} disabled={loading || !!disabled}>
-            <Maximize2 size={16} aria-hidden="true" />
-            适配
-          </button>
-          <button type="button" onClick={resetView}>
-            <RotateCcw size={16} aria-hidden="true" />
-            重置
-          </button>
-          <button type="button" onClick={onRefresh} disabled={loading}>
-            <RefreshCw size={16} aria-hidden="true" />
-            刷新视图
-          </button>
-          <button type="button" className="graph-rebuild-button" onClick={onRebuild ?? onRefresh} disabled={loading}>
-            <Sparkles size={16} aria-hidden="true" />
-            重建图谱
-          </button>
         </div>
-      </div>
 
-      <div className="graph-filter-row">
-        <label className="graph-search">
-          <Search size={18} aria-hidden="true" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索文件实体、关系或来源片段"
-          />
-        </label>
-        <div className="graph-type-filter" aria-label="节点类型筛选">
-          {availableTypes.length === 0 ? (
-            <span>暂无类型</span>
-          ) : (
-            availableTypes.map((type) => (
-              <label key={type} className={enabledTypes.includes(type) ? 'enabled' : ''}>
+        {documents.length > 0 && (
+          <div className="graph-library-filter" aria-label="知识库图谱筛选">
+            <button
+              type="button"
+              className={selectedDocumentIds.length === 0 ? 'active' : ''}
+              onClick={() => onDocumentSelectionChange?.([])}
+              disabled={loading}
+            >
+              全部知识库
+            </button>
+            {documents.slice(0, 12).map((document) => (
+              <label
+                key={document.id}
+                className={selectedDocumentIds.includes(document.id) ? 'enabled' : ''}
+                title={document.filename}
+              >
                 <input
                   type="checkbox"
-                  checked={enabledTypes.includes(type)}
-                  onChange={() => toggleType(type)}
+                  checked={selectedDocumentIds.includes(document.id)}
+                  onChange={() => toggleDocument(document.id)}
+                  disabled={loading}
                 />
-                <i style={{ backgroundColor: colorForType(type) }} />
-                {semanticTypeLabels[type] ?? type}
+                {trimLabel(document.filename, 18)}
               </label>
-            ))
-          )}
-        </div>
-      </div>
-
-      {documents.length > 0 && (
-        <div className="graph-library-filter" aria-label="知识库图谱筛选">
-          <button
-            type="button"
-            className={selectedDocumentIds.length === 0 ? 'active' : ''}
-            onClick={() => onDocumentSelectionChange?.([])}
-            disabled={loading}
-          >
-            全部知识库
-          </button>
-          {documents.slice(0, 12).map((document) => (
-            <label
-              key={document.id}
-              className={selectedDocumentIds.includes(document.id) ? 'enabled' : ''}
-              title={document.filename}
-            >
-              <input
-                type="checkbox"
-                checked={selectedDocumentIds.includes(document.id)}
-                onChange={() => toggleDocument(document.id)}
-                disabled={loading}
-              />
-              {trimLabel(document.filename, 18)}
-            </label>
-          ))}
-          <span>{selectedDocumentIds.length ? `已组合 ${selectedDocumentIds.length} 个知识库` : '当前组合：全部文件'}</span>
-        </div>
-      )}
-
-      {graph?.message && (
-        <div className={`graph-state ${disabled || unavailable ? 'warning' : 'info'}`}>
-          {graph.message}
-        </div>
-      )}
-
-      <div className="graph-insight-strip">
-        <span>数据源：{sourceLabel}</span>
-        <span>当前可见：{filteredNodes.length} 个节点 / {filteredEdges.length} 条关系</span>
-        <span>视图：{mode === '2d' ? '2D 分层图谱' : '3D 空间图谱'}</span>
-        <span>控制：节点拖拽只作用于图谱，页面滚动不再抢占画布操作</span>
-      </div>
-
-      <div className="graph-stage">
-        {loading && <div className="graph-overlay">知识图谱加载中...</div>}
-        {empty && (
-          <div className="graph-overlay empty">
-            {query.trim() ? '没有找到相关文件实体，请更换关键词或重置筛选。' : '当前工作区暂无可展示的文件实体关系图谱。'}
+            ))}
+            <span>{selectedDocumentIds.length ? `已组合 ${selectedDocumentIds.length} 个知识库` : '当前组合：全部文件'}</span>
           </div>
         )}
-        {disabled || unavailable ? (
-          <div className="graph-disabled">
-            <Network size={40} aria-hidden="true" />
-            <strong>{graph?.status === 'permission_denied' ? '暂无权限查看图谱' : 'Neo4j 图谱不可用'}</strong>
-            <span>{graph?.message ?? '当前无法展示真实知识图谱。'}</span>
+
+        {graph?.message && (
+          <div className={`graph-state ${disabled || unavailable ? 'warning' : 'info'}`}>
+            {graph.message}
           </div>
-        ) : mode === '2d' ? (
-          <Graph2D
-            svgRef={svgRef}
-            nodes={filteredNodes}
-            edges={filteredEdges}
-            positions={positions}
-            zoom={zoom}
-            pan={pan}
-            draggingNodeId={draggingNodeId}
-            selectedNodeId={selectedNode?.id ?? null}
-            onZoom={setZoom}
-            onPan={setPan}
-            onDragStart={setDraggingNodeId}
-            onDragEnd={() => setDraggingNodeId(null)}
-            onMoveNode={(nodeId, point) =>
-              setPositions((items) => ({
-                ...items,
-                [nodeId]: point
-              }))
-            }
-            onSelect={activateNode}
-          />
-        ) : (
-          <Graph3D
-            nodes={filteredNodes}
-            edges={filteredEdges}
-            selectedNodeId={selectedNode?.id ?? null}
-            onSelect={activateNode}
-          />
         )}
-      </div>
 
-      <div className="graph-legend">
-        {availableTypes.map((type) => (
-          <span key={type}>
-            <i style={{ backgroundColor: colorForType(type) }} />
-            {semanticTypeLabels[type] ?? type}
-          </span>
-        ))}
-      </div>
+        <div className="graph-workbench-grid">
+          <aside className="graph-left-panel" aria-label="图谱图例与搜索结果">
+            <div className="graph-panel-card graph-scene-card">
+              <div className="graph-panel-heading">
+                <Database size={16} aria-hidden="true" />
+                <span>Scene</span>
+              </div>
+              <strong>{filteredNodes.length}</strong>
+              <p>当前可见节点</p>
+              <small>{filteredEdges.length} 条关系 · {workspaceLabel}</small>
+            </div>
 
-      {selectedNode && (
-        <aside className="graph-detail-drawer" aria-label="图谱节点详情">
-          <div>
-            <span className="status-badge indexed">{semanticTypeLabels[semanticTypeOfNode(selectedNode)] ?? semanticTypeOfNode(selectedNode)}</span>
-            <button type="button" onClick={() => setSelectedNode(null)}>
-              关闭
-            </button>
+            <div className="graph-panel-card">
+              <div className="graph-panel-heading">
+                <Filter size={16} aria-hidden="true" />
+                <span>实体类型</span>
+              </div>
+              <div className="graph-type-list">
+                {availableTypes.length === 0 ? (
+                  <span className="graph-muted">暂无类型</span>
+                ) : (
+                  availableTypes.map((type) => (
+                    <label key={type} className={enabledTypes.includes(type) ? 'enabled' : ''}>
+                      <input
+                        type="checkbox"
+                        checked={enabledTypes.includes(type)}
+                        onChange={() => toggleType(type)}
+                      />
+                      <i style={{ backgroundColor: colorForType(type) }} />
+                      <span>{semanticTypeLabels[type] ?? type}</span>
+                      <b>{typeCounts.get(type) ?? 0}</b>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="graph-panel-card">
+              <div className="graph-panel-heading">
+                <GitBranch size={16} aria-hidden="true" />
+                <span>关系类型</span>
+              </div>
+              <div className="graph-relation-list">
+                {relationCounts.length === 0 ? (
+                  <span className="graph-muted">暂无关系</span>
+                ) : (
+                  relationCounts.map(([label, count]) => (
+                    <button type="button" key={label} onClick={() => setQuery(label)}>
+                      <i style={{ backgroundColor: colorForRelation(label) }} />
+                      <span>{label}</span>
+                      <b>{count}</b>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="graph-panel-card graph-search-results">
+              <div className="graph-panel-heading">
+                <Search size={16} aria-hidden="true" />
+                <span>检索结果</span>
+              </div>
+              {searchResultNodes.length === 0 ? (
+                <p className="graph-muted">{query.trim() ? '没有找到相关实体。' : '输入关键词后在当前图谱中定位实体。'}</p>
+              ) : (
+                searchResultNodes.map((node) => (
+                  <button
+                    type="button"
+                    key={node.id}
+                    className={selectedNode?.id === node.id ? 'active' : ''}
+                    onClick={() => activateNode(node)}
+                  >
+                    <i style={{ backgroundColor: colorForType(semanticTypeOfNode(node)) }} />
+                    <span>
+                      <strong>{node.label}</strong>
+                      <small>{semanticTypeLabels[semanticTypeOfNode(node)] ?? semanticTypeOfNode(node)}</small>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </aside>
+
+          <div className="graph-canvas-column">
+            <div className="graph-canvas-toolbar" aria-label="图谱场景控制">
+              <div className="segmented-control" role="group" aria-label="图谱模式">
+                <button type="button" className={mode === '2d' ? 'active' : ''} onClick={() => setMode('2d')}>
+                  <Share2 size={16} aria-hidden="true" />
+                  2D
+                </button>
+                <button type="button" className={mode === '3d' ? 'active' : ''} onClick={() => setMode('3d')}>
+                  <Box size={16} aria-hidden="true" />
+                  3D
+                </button>
+              </div>
+              <button type="button" onClick={fitView} disabled={loading || !!disabled}>
+                <Maximize2 size={16} aria-hidden="true" />
+                适配
+              </button>
+              <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} disabled={mode !== '2d'}>
+                +
+              </button>
+              <button type="button" onClick={() => setZoom((value) => Math.max(0.55, value - 0.1))} disabled={mode !== '2d'}>
+                -
+              </button>
+              <button type="button" onClick={resetView}>
+                <RotateCcw size={16} aria-hidden="true" />
+                重置
+              </button>
+              <span>
+                <MousePointer2 size={14} aria-hidden="true" />
+                拖拽节点，Ctrl + 滚轮缩放
+              </span>
+            </div>
+
+            <div className="graph-stage">
+              {loading && <div className="graph-overlay">知识图谱加载中...</div>}
+              {empty && (
+                <div className="graph-overlay empty">
+                  {query.trim() ? '没有找到相关文件实体，请更换关键词或重置筛选。' : '当前工作区暂无可展示的文件实体关系图谱。'}
+                </div>
+              )}
+              {disabled || unavailable ? (
+                <div className="graph-disabled">
+                  <Network size={40} aria-hidden="true" />
+                  <strong>{graph?.status === 'permission_denied' ? '暂无权限查看图谱' : 'Neo4j 图谱不可用'}</strong>
+                  <span>{graph?.message ?? '当前无法展示真实知识图谱。'}</span>
+                </div>
+              ) : mode === '2d' ? (
+                <Graph2D
+                  svgRef={svgRef}
+                  nodes={filteredNodes}
+                  edges={filteredEdges}
+                  positions={positions}
+                  zoom={zoom}
+                  pan={pan}
+                  draggingNodeId={draggingNodeId}
+                  selectedNodeId={selectedNode?.id ?? null}
+                  onZoom={setZoom}
+                  onPan={setPan}
+                  onDragStart={setDraggingNodeId}
+                  onDragEnd={() => setDraggingNodeId(null)}
+                  onMoveNode={(nodeId, point) =>
+                    setPositions((items) => ({
+                      ...items,
+                      [nodeId]: point
+                    }))
+                  }
+                  onSelect={activateNode}
+                />
+              ) : (
+                <Graph3D
+                  nodes={filteredNodes}
+                  edges={filteredEdges}
+                  selectedNodeId={selectedNode?.id ?? null}
+                  onSelect={activateNode}
+                />
+              )}
+            </div>
           </div>
-          <h4>{selectedNode.label}</h4>
-          <dl className="definition-list">
-            <div>
-              <dt>节点 ID</dt>
-              <dd>{selectedNode.id}</dd>
+
+          <aside className="graph-right-panel" aria-label="图谱节点详情">
+            <div className="graph-inspector-heading">
+              <PanelRightOpen size={17} aria-hidden="true" />
+              <span>实体检查器</span>
+              {selectedNode && (
+                <button type="button" onClick={() => setSelectedNode(null)} aria-label="关闭节点详情">
+                  <X size={16} aria-hidden="true" />
+                </button>
+              )}
             </div>
-            <div>
-              <dt>所属空间</dt>
-              <dd>{workspaceLabel}</dd>
-            </div>
-            <div>
-              <dt>权重</dt>
-              <dd>{selectedNode.weight ?? 1}</dd>
-            </div>
-            <div>
-              <dt>语义类型</dt>
-              <dd>{semanticTypeLabels[semanticTypeOfNode(selectedNode)] ?? semanticTypeOfNode(selectedNode)}</dd>
-            </div>
-          </dl>
-          <div className="graph-property-list">
-            {Object.entries(selectedNode.properties ?? {})
-              .slice(0, 8)
-              .map(([key, value]) => (
-                <span key={key}>
-                  <strong>{key}</strong>
-                  {String(value)}
+            {selectedNode ? (
+              <>
+                <span className="status-badge indexed">
+                  {semanticTypeLabels[semanticTypeOfNode(selectedNode)] ?? semanticTypeOfNode(selectedNode)}
                 </span>
-              ))}
-          </div>
-          <button
-            className="primary-action compact-action"
-            type="button"
-            onClick={() => performPrimaryNodeAction(selectedNode)}
-          >
-            基于实体检索知识库
-          </button>
-        </aside>
-      )}
+                <h4>{selectedNode.label}</h4>
+                <dl className="definition-list graph-definition-list">
+                  <div>
+                    <dt>所属空间</dt>
+                    <dd>{workspaceLabel}</dd>
+                  </div>
+                  <div>
+                    <dt>权重 / 置信度</dt>
+                    <dd>
+                      {selectedNode.weight ?? 1}
+                      {selectedNode.properties?.confidence ? ` / ${selectedNode.properties.confidence}` : ''}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>来源文件</dt>
+                    <dd>{selectedFilename}</dd>
+                  </div>
+                  <div>
+                    <dt>命中字段</dt>
+                    <dd>{selectedNode.properties?.match_field ? String(selectedNode.properties.match_field) : '当前视图'}</dd>
+                  </div>
+                </dl>
+                {selectedNode.properties?.content_preview && (
+                  <div className="graph-evidence-box">
+                    <strong>证据片段</strong>
+                    <p>{String(selectedNode.properties.content_preview)}</p>
+                  </div>
+                )}
+                <div className="graph-neighbor-list">
+                  <strong>相邻关系</strong>
+                  {selectedRelations.length === 0 ? (
+                    <span className="graph-muted">暂无相邻关系。</span>
+                  ) : (
+                    selectedRelations.map((edge) => (
+                      <button type="button" key={edge.id} onClick={() => setQuery(edge.label)}>
+                        <i style={{ backgroundColor: colorForRelation(edge.label) }} />
+                        <span>{edge.label}</span>
+                        <small>{edge.source === selectedNode.id ? '出边' : '入边'}</small>
+                      </button>
+                    ))
+                  )}
+                </div>
+                <div className="graph-property-list">
+                  {Object.entries(selectedNode.properties ?? {})
+                    .filter(([key]) => !['content_preview'].includes(key))
+                    .slice(0, 10)
+                    .map(([key, value]) => (
+                      <span key={key}>
+                        <strong>{key}</strong>
+                        {String(value)}
+                      </span>
+                    ))}
+                </div>
+                <div className="graph-inspector-actions">
+                  {selectedDocumentId && (
+                    <button type="button" onClick={() => onOpenDocument(selectedDocumentId)}>
+                      <FileText size={16} aria-hidden="true" />
+                      打开来源文档
+                    </button>
+                  )}
+                  <button type="button" onClick={() => performPrimaryNodeAction(selectedNode)}>
+                    <Eye size={16} aria-hidden="true" />
+                    基于实体检索
+                  </button>
+                  <button type="button" onClick={onOpenQuestion}>
+                    <Sparkles size={16} aria-hidden="true" />
+                    进入问答
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="graph-empty-inspector">
+                <MousePointer2 size={34} aria-hidden="true" />
+                <strong>选择一个节点查看详情</strong>
+                <span>节点、关系和证据均来自当前知识库文档，不写入问答记录节点。</span>
+              </div>
+            )}
+          </aside>
+        </div>
+      </div>
     </section>
   );
 }
@@ -518,12 +686,14 @@ function Graph2D({
     pointerId: number | null;
     nodeId: string | null;
     lastClient: { x: number; y: number } | null;
+    nodeOffset: { x: number; y: number } | null;
     moved: boolean;
   }>({
     mode: null,
     pointerId: null,
     nodeId: null,
     lastClient: null,
+    nodeOffset: null,
     moved: false
   });
   const suppressClickRef = useRef(false);
@@ -541,7 +711,7 @@ function Graph2D({
     return ids;
   }, [edges, selectedNodeId]);
 
-  function svgPoint(event: React.PointerEvent<SVGSVGElement>) {
+  function svgPoint(event: React.PointerEvent<SVGElement>) {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return { x: 0, y: 0 };
     const rawPoint = {
@@ -574,6 +744,7 @@ function Graph2D({
       pointerId: null,
       nodeId: null,
       lastClient: null,
+      nodeOffset: null,
       moved: false
     };
     onDragEnd();
@@ -605,6 +776,7 @@ function Graph2D({
             pointerId: event.pointerId,
             nodeId: null,
             lastClient: { x: event.clientX, y: event.clientY },
+            nodeOffset: null,
             moved: false
           };
           setDraggingCanvas(true);
@@ -620,7 +792,12 @@ function Graph2D({
           if (distance > 2) interaction.moved = true;
         }
         if (interaction.mode === 'node' && interaction.nodeId) {
-          onMoveNode(interaction.nodeId, svgPoint(event));
+          const point = svgPoint(event);
+          const offset = interaction.nodeOffset ?? { x: 0, y: 0 };
+          onMoveNode(interaction.nodeId, {
+            x: point.x + offset.x,
+            y: point.y + offset.y
+          });
           interaction.lastClient = { x: event.clientX, y: event.clientY };
           return;
         }
@@ -710,12 +887,18 @@ function Graph2D({
                 if (event.button !== 0) return;
                 event.preventDefault();
                 event.stopPropagation();
+                const pointerPoint = svgPoint(event);
+                const currentPoint = positions[node.id] ?? { x: GRAPH_WIDTH / 2, y: GRAPH_HEIGHT / 2 };
                 svgRef.current?.setPointerCapture(event.pointerId);
                 interactionRef.current = {
                   mode: 'node',
                   pointerId: event.pointerId,
                   nodeId: node.id,
                   lastClient: { x: event.clientX, y: event.clientY },
+                  nodeOffset: {
+                    x: currentPoint.x - pointerPoint.x,
+                    y: currentPoint.y - pointerPoint.y
+                  },
                   moved: false
                 };
                 onDragStart(node.id);
@@ -764,10 +947,10 @@ function Graph3D({
     container.replaceChildren();
 
     const width = Math.max(container.clientWidth, 760);
-    const height = GRAPH_HEIGHT;
+    const height = Math.max(container.clientHeight || 810, 560);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#f4faf9');
-    scene.fog = new THREE.Fog('#f4faf9', 680, 1420);
+    scene.background = new THREE.Color('#f8fbff');
+    scene.fog = new THREE.Fog('#f8fbff', 760, 1580);
 
     const camera = new THREE.PerspectiveCamera(36, width / height, 1, 2600);
     camera.position.set(0, 48, nodes.length <= 3 ? 520 : 920);
@@ -781,9 +964,10 @@ function Graph3D({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
-    controls.autoRotate = true;
-    controls.autoRotateSpeed = 0.24;
+    controls.autoRotate = false;
     controls.enableZoom = false;
+    controls.enablePan = true;
+    controls.screenSpacePanning = true;
     controls.minDistance = 320;
     controls.maxDistance = 1320;
 
@@ -798,10 +982,14 @@ function Graph3D({
     }
     renderer.domElement.addEventListener('wheel', handleGraphWheel, { passive: false });
 
-    scene.add(new THREE.AmbientLight(0xffffff, 1.25));
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xdbeafe, 1.25));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.62));
     const pointLight = new THREE.PointLight(0xffffff, 1.8);
     pointLight.position.set(260, 240, 380);
     scene.add(pointLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    directionalLight.position.set(-180, 260, 320);
+    scene.add(directionalLight);
     const accentLight = new THREE.PointLight(0x14b8a6, 1.1);
     accentLight.position.set(-260, -120, 260);
     scene.add(accentLight);
