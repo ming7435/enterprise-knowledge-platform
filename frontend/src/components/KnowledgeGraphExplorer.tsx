@@ -396,6 +396,16 @@ export function KnowledgeGraphExplorer({
           </div>
         )}
 
+        <div className="graph-cypher-strip" aria-label="Neo4j Browser 查询条">
+          <span>$</span>
+          <code>
+            MATCH p=(source:Entity)-[r:FILE_RELATION]-&gt;(target:Entity)
+            {selectedDocumentIds.length ? ' WHERE source.document_id IN $selectedKnowledgeBases' : ''}
+            {' RETURN p LIMIT 100'}
+          </code>
+          <small>{filteredNodes.length} rows</small>
+        </div>
+
         <div className="graph-workbench-grid">
           <aside className="graph-left-panel" aria-label="图谱图例与搜索结果">
             <div className="graph-panel-card graph-scene-card">
@@ -589,6 +599,37 @@ export function KnowledgeGraphExplorer({
                         selectedNodeId={selectedNode?.id ?? null}
                         onSelect={activateNode}
                       />
+                    )}
+                    {!loading && !empty && !disabled && !unavailable && (
+                      <>
+                        <div className="graph-result-status">
+                          Displaying {filteredNodes.length} nodes, {filteredEdges.length} relationships.
+                        </div>
+                        <div className="graph-viewport-controls" aria-label="图谱视口控制">
+                          <button type="button" onClick={fitView} title="Fit to screen">
+                            ⛶
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))}
+                            disabled={mode !== '2d'}
+                            title="Zoom in"
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setZoom((value) => Math.max(0.55, value - 0.1))}
+                            disabled={mode !== '2d'}
+                            title="Zoom out"
+                          >
+                            −
+                          </button>
+                          <button type="button" onClick={resetView} title="Reset graph">
+                            ↺
+                          </button>
+                        </div>
+                      </>
                     )}
                   </div>
                 ) : resultView === 'table' ? (
@@ -860,6 +901,7 @@ function Graph2D({
     mode: 'canvas' | 'node' | null;
     pointerId: number | null;
     nodeId: string | null;
+    originClient: { x: number; y: number } | null;
     lastClient: { x: number; y: number } | null;
     nodeOffset: { x: number; y: number } | null;
     moved: boolean;
@@ -867,15 +909,16 @@ function Graph2D({
     mode: null,
     pointerId: null,
     nodeId: null,
+    originClient: null,
     lastClient: null,
     nodeOffset: null,
     moved: false
   });
-  const suppressClickRef = useRef(false);
   const panRef = useRef(pan);
   useEffect(() => {
     panRef.current = pan;
   }, [pan]);
+  const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const connectedNodeIds = useMemo(() => {
     const ids = new Set<string>();
     if (!selectedNodeId) return ids;
@@ -912,12 +955,16 @@ function Graph2D({
     if (pointerId !== undefined && svgRef.current?.hasPointerCapture(pointerId)) {
       svgRef.current.releasePointerCapture(pointerId);
     }
-    const wasNodeDrag = interactionRef.current.mode === 'node';
-    suppressClickRef.current = wasNodeDrag && interactionRef.current.moved;
+    const interaction = interactionRef.current;
+    if (interaction.mode === 'node' && interaction.nodeId && !interaction.moved) {
+      const node = nodeById.get(interaction.nodeId);
+      if (node) onSelect(node);
+    }
     interactionRef.current = {
       mode: null,
       pointerId: null,
       nodeId: null,
+      originClient: null,
       lastClient: null,
       nodeOffset: null,
       moved: false
@@ -950,6 +997,7 @@ function Graph2D({
             mode: 'canvas',
             pointerId: event.pointerId,
             nodeId: null,
+            originClient: { x: event.clientX, y: event.clientY },
             lastClient: { x: event.clientX, y: event.clientY },
             nodeOffset: null,
             moved: false
@@ -962,9 +1010,12 @@ function Graph2D({
         if (interaction.pointerId !== event.pointerId || !interaction.mode) return;
         event.preventDefault();
         event.stopPropagation();
-        if (interaction.lastClient) {
-          const distance = Math.hypot(event.clientX - interaction.lastClient.x, event.clientY - interaction.lastClient.y);
-          if (distance > 2) interaction.moved = true;
+        if (interaction.originClient) {
+          const distance = Math.hypot(event.clientX - interaction.originClient.x, event.clientY - interaction.originClient.y);
+          if (distance > 5) interaction.moved = true;
+        }
+        if (!interaction.moved) {
+          return;
         }
         if (interaction.mode === 'node' && interaction.nodeId) {
           const point = svgPoint(event);
@@ -1069,6 +1120,7 @@ function Graph2D({
                   mode: 'node',
                   pointerId: event.pointerId,
                   nodeId: node.id,
+                  originClient: { x: event.clientX, y: event.clientY },
                   lastClient: { x: event.clientX, y: event.clientY },
                   nodeOffset: {
                     x: currentPoint.x - pointerPoint.x,
@@ -1078,22 +1130,26 @@ function Graph2D({
                 };
                 onDragStart(node.id);
               }}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (suppressClickRef.current) {
-                  suppressClickRef.current = false;
-                  return;
-                }
-                onSelect(node);
-              }}
             >
-              <circle className="graph-node-hit-area" r={radius + 18} />
-              <circle className="graph-node-halo" r={radius + 12} fill={colorForType(type)} />
+              <circle className="graph-node-hit-area" r={radius + 28} />
+              <circle className="graph-node-selection-ring" r={radius + 18} fill="none" />
+              <circle className="graph-node-halo" r={radius + 10} fill={colorForType(type)} />
+              {selected && (
+                <g className="graph-node-actions" aria-hidden="true">
+                  <circle cx={0} cy={-(radius + 34)} r="12" />
+                  <circle cx={radius + 34} cy="0" r="12" />
+                  <circle cx={0} cy={radius + 34} r="12" />
+                  <circle cx={-(radius + 34)} cy="0" r="12" />
+                  <text x="0" y={-(radius + 30)}>+</text>
+                  <text x={radius + 34} y="4">i</text>
+                  <text x="0" y={radius + 38}>×</text>
+                  <text x={-(radius + 34)} y="4">↺</text>
+                </g>
+              )}
               <circle className="graph-node-core" r={radius} fill={colorForType(type)} />
-              <circle className="graph-node-shine" r={Math.max(6, radius * 0.38)} cx={-radius * 0.28} cy={-radius * 0.32} />
-              <text className="graph-node-initial" y="5">{nodeInitial(node)}</text>
-              <text className="graph-node-label" y={radius + 20}>{trimLabel(node.label, 16)}</text>
-              <text className="graph-node-type" y={radius + 36}>{semanticTypeLabels[type] ?? type}</text>
+              <circle className="graph-node-inner" r={Math.max(8, radius - 7)} />
+              <text className="graph-node-label" y="4">{trimLabel(node.label, radius > 25 ? 8 : 5)}</text>
+              <text className="graph-node-caption" y={radius + 19}>{semanticTypeLabels[type] ?? type}</text>
             </g>
           );
         })}
@@ -1525,27 +1581,6 @@ function edgeControlPoint(source: { x: number; y: number }, target: { x: number;
 function nodeRadius(node: KnowledgeGraphNode) {
   const weight = Math.max(1, Math.min(node.weight ?? 1, 100));
   return Math.min(30, 11 + Math.sqrt(weight) * 1.75);
-}
-
-function nodeInitial(node: KnowledgeGraphNode) {
-  const type = semanticTypeOfNode(node);
-  if (type === 'file') return 'F';
-  if (type === 'api') return 'A';
-  if (type === 'technology') return 'T';
-  if (type === 'knowledge_base') return 'K';
-  if (type === 'workspace') return 'W';
-  if (type === 'module') return 'M';
-  if (type === 'process') return 'P';
-  if (type === 'config') return 'C';
-  if (type === 'permission') return 'S';
-  if (type === '技术组件') return 'T';
-  if (type === '功能模块') return 'M';
-  if (type === '数据对象') return 'D';
-  if (type === '配置权限') return 'S';
-  if (type === '流程动作') return 'P';
-  if (type === '指标状态') return 'I';
-  if (type === '文档章节') return 'H';
-  return trimLabel(node.label, 1).toUpperCase();
 }
 
 function makeTextSprite(text: string, typeLabel: string, color: string) {

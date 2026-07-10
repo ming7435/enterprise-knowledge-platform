@@ -2061,6 +2061,39 @@ p {
   color: #92400e;
 }
 
+.graph-cypher-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #d9e4ed;
+  border-bottom: 1px solid #d9e4ed;
+  padding: 9px 13px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 12px;
+}
+
+.graph-cypher-strip span {
+  color: #64748b;
+  font-weight: 950;
+}
+
+.graph-cypher-strip code {
+  overflow: hidden;
+  color: #334155;
+  font-family: Consolas, Monaco, 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-cypher-strip small {
+  color: #64748b;
+  font-weight: 900;
+}
+
 .graph-insight-strip {
   display: flex;
   flex-wrap: wrap;
@@ -2204,23 +2237,38 @@ p {
 
 .graph-svg-node.connected .graph-node-halo,
 .graph-svg-node.selected .graph-node-halo {
-  opacity: 0.26;
+  opacity: 0.2;
 }
 
-.graph-node-core {
-  stroke: #fff;
+.graph-node-selection-ring {
+  stroke: transparent;
   stroke-width: 4;
-  filter: drop-shadow(0 12px 18px rgba(15, 23, 42, 0.22));
-}
-
-.graph-node-shine {
-  fill: rgba(255, 255, 255, 0.34);
+  stroke-dasharray: 4 7;
+  opacity: 0;
   pointer-events: none;
 }
 
+.graph-node-core {
+  stroke: rgba(255, 255, 255, 0.96);
+  stroke-width: 3.5;
+  filter: drop-shadow(0 9px 14px rgba(15, 23, 42, 0.2));
+}
+
+.graph-node-inner {
+  fill: rgba(255, 255, 255, 0.08);
+  stroke: rgba(255, 255, 255, 0.24);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.graph-svg-node.selected .graph-node-selection-ring {
+  stroke: #475569;
+  opacity: 0.72;
+}
+
 .graph-svg-node.selected .graph-node-core {
-  stroke: #f59e0b;
-  stroke-width: 5;
+  stroke: #fbbf24;
+  stroke-width: 4.5;
 }
 
 .graph-svg-node.connected .graph-node-core {
@@ -2232,35 +2280,45 @@ p {
   pointer-events: none;
 }
 
-.graph-node-initial {
-  fill: #fff;
-  font-size: 14px;
-  font-weight: 950;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke: rgba(15, 23, 42, 0.16);
-  stroke-width: 2px;
-}
-
 .graph-node-label {
   max-width: 120px;
-  fill: #1f2937;
-  font-size: 13px;
+  fill: #ffffff;
+  font-size: 11px;
   font-weight: 900;
   text-anchor: middle;
   paint-order: stroke;
-  stroke: #fff;
-  stroke-width: 5.4px;
+  stroke: rgba(15, 23, 42, 0.26);
+  stroke-width: 2.4px;
 }
 
-.graph-node-type {
+.graph-node-caption {
   fill: #64748b;
-  font-size: 8.8px;
+  font-size: 9px;
   font-weight: 900;
   text-anchor: middle;
   paint-order: stroke;
   stroke: #fff;
   stroke-width: 3.5px;
+}
+
+.graph-node-actions {
+  pointer-events: none;
+}
+
+.graph-node-actions circle {
+  fill: #ffffff;
+  stroke: #94a3b8;
+  stroke-width: 1.4;
+  filter: drop-shadow(0 5px 8px rgba(15, 23, 42, 0.18));
+}
+
+.graph-node-actions text {
+  fill: #475569;
+  font-size: 11px;
+  font-weight: 950;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  stroke: none;
 }
 
 .graph-overlay,
@@ -2848,6 +2906,61 @@ p {
   color: #475569;
   font-weight: 900;
   text-align: center;
+}
+
+.graph-result-status {
+  position: absolute;
+  z-index: 5;
+  bottom: 12px;
+  left: 14px;
+  border: 1px solid #d9e4ed;
+  border-radius: 4px;
+  padding: 6px 9px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
+}
+
+.graph-viewport-controls {
+  position: absolute;
+  z-index: 6;
+  right: 14px;
+  bottom: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, 34px);
+  gap: 6px;
+  border: 1px solid #d9e4ed;
+  border-radius: 4px;
+  padding: 5px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
+}
+
+.graph-viewport-controls button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 15px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.graph-viewport-controls button:hover {
+  border-color: #cbd5e1;
+  background: #eef6f6;
+  color: #0f766e;
+}
+
+.graph-viewport-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .graph-inspector-heading {
