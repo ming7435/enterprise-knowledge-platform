@@ -4659,3 +4659,158 @@ p {
     height: auto;
   }
 }
+
+/* 最终覆盖：侧栏可隐藏、图谱检查器可调宽 */
+.app-shell.sidebar-collapsed {
+  grid-template-columns: 84px minmax(0, 1fr);
+  background:
+    linear-gradient(90deg, #0f172a 0 84px, transparent 84px),
+    radial-gradient(circle at 95% 0%, rgba(15, 118, 110, 0.12), transparent 28%),
+    #f4f7fb;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: 18px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #dbeafe;
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: rgba(20, 184, 166, 0.18);
+  color: #ffffff;
+}
+
+.app-shell.sidebar-collapsed .sidebar {
+  align-items: center;
+  padding: 24px 14px;
+}
+
+.app-shell.sidebar-collapsed .brand-block {
+  justify-content: center;
+  margin-top: 34px;
+}
+
+.app-shell.sidebar-collapsed .brand-block div,
+.app-shell.sidebar-collapsed .sidebar-context,
+.app-shell.sidebar-collapsed .sidebar-footer,
+.app-shell.sidebar-collapsed .sidebar-nav button span {
+  display: none;
+}
+
+.app-shell.sidebar-collapsed .brand-logo {
+  width: 44px;
+  height: 44px;
+}
+
+.app-shell.sidebar-collapsed .sidebar-nav {
+  width: 100%;
+  align-items: center;
+}
+
+.app-shell.sidebar-collapsed .sidebar-nav button {
+  width: 54px;
+  min-height: 52px;
+  padding: 0;
+  justify-content: center;
+}
+
+.app-shell.sidebar-collapsed .sidebar-nav button.active {
+  box-shadow: inset 0 -3px 0 #5eead4;
+}
+
+.graph-workbench-grid {
+  grid-template-columns: minmax(0, 1fr) 7px var(--graph-inspector-width, 268px);
+}
+
+.graph-workbench-grid.right-panel-hidden {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.graph-workbench-grid.left-panel-hidden .graph-left-panel,
+.graph-left-panel.is-hidden {
+  display: none;
+}
+
+.graph-panel-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #dbe5ee;
+  border-radius: 7px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.graph-panel-icon-button:hover {
+  border-color: rgba(15, 118, 110, 0.38);
+  color: #0f766e;
+}
+
+.graph-inspector-resizer {
+  width: 7px;
+  min-width: 7px;
+  cursor: col-resize;
+  background:
+    linear-gradient(90deg, transparent 0 2px, rgba(148, 163, 184, 0.55) 2px 3px, transparent 3px);
+}
+
+.graph-inspector-resizer:hover {
+  background:
+    linear-gradient(90deg, transparent 0 2px, rgba(15, 118, 110, 0.85) 2px 4px, transparent 4px);
+}
+
+.graph-resizing-inspector,
+.graph-resizing-inspector * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+@media (max-width: 1180px) {
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: 78px minmax(0, 1fr);
+    background:
+      linear-gradient(90deg, #0f172a 0 78px, transparent 78px),
+      #f4f7fb;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell.sidebar-collapsed,
+  .app-shell {
+    grid-template-columns: 1fr;
+    background: #f4f7fb;
+  }
+
+  .app-shell.sidebar-collapsed .brand-block div,
+  .app-shell.sidebar-collapsed .sidebar-context,
+  .app-shell.sidebar-collapsed .sidebar-footer,
+  .app-shell.sidebar-collapsed .sidebar-nav button span {
+    display: initial;
+  }
+
+  .app-shell.sidebar-collapsed .sidebar-nav button {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 0 14px;
+  }
+
+  .graph-workbench-grid,
+  .graph-workbench-grid.right-panel-hidden {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-inspector-resizer {
+    display: none;
+  }
+}

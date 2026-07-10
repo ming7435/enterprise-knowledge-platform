@@ -8,6 +8,8 @@ import {
   Home,
   LogOut,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCw,
   Search,
   Settings,
@@ -159,6 +161,7 @@ export function WorkspaceShell({
 
   const navItems = workspace.type === 'enterprise' ? enterpriseNav : personalNav;
   const currentNav = navItems.find((item) => item.key === activePage) ?? navItems[0];
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const workspaceLabel = workspace.type === 'enterprise' ? '企业工作区' : '个人工作区';
   const latestDocuments = useMemo(() => documents.slice(0, 3), [documents]);
   const canManageMembers = workspace.role === 'owner' || workspace.role === 'admin';
@@ -795,8 +798,17 @@ export function WorkspaceShell({
   }
 
   return (
-    <main className={`app-shell ${workspace.type === 'enterprise' ? 'enterprise-shell' : 'personal-shell'}`}>
+    <main className={`app-shell ${workspace.type === 'enterprise' ? 'enterprise-shell' : 'personal-shell'} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <aside className="sidebar">
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={() => setSidebarCollapsed((value) => !value)}
+          aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
+        </button>
         <div className="brand-block">
           <img className="brand-logo" src="/qizhiyun-logo.png" alt="企知云" />
           <div>
@@ -818,9 +830,10 @@ export function WorkspaceShell({
                 key={item.key}
                 className={item.key === activePage ? 'active' : ''}
                 onClick={() => setActivePage(item.key)}
+                title={item.label}
               >
                 <Icon size={18} aria-hidden="true" />
-                {item.label}
+                <span>{item.label}</span>
               </button>
             );
           })}

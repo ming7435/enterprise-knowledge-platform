@@ -183,6 +183,9 @@ export function KnowledgeGraphExplorer({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
+  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  const [rightPanelWidth, setRightPanelWidth] = useState(268);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   const nodes = graph?.nodes ?? [];
@@ -258,6 +261,25 @@ export function KnowledgeGraphExplorer({
 
   function activateNode(node: KnowledgeGraphNode) {
     setSelectedNode(node);
+    setRightPanelVisible(true);
+  }
+
+  function startInspectorResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = rightPanelWidth;
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = startWidth - (moveEvent.clientX - startX);
+      setRightPanelWidth(Math.max(220, Math.min(460, nextWidth)));
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      document.body.classList.remove('graph-resizing-inspector');
+    };
+    document.body.classList.add('graph-resizing-inspector');
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   }
 
   function performPrimaryNodeAction(node: KnowledgeGraphNode) {
@@ -406,12 +428,25 @@ export function KnowledgeGraphExplorer({
           <small>{filteredNodes.length} rows</small>
         </div>
 
-        <div className="graph-workbench-grid">
+        <div
+          className={`graph-workbench-grid ${leftPanelVisible ? '' : 'left-panel-hidden'} ${rightPanelVisible ? '' : 'right-panel-hidden'}`}
+          style={{ '--graph-inspector-width': `${rightPanelWidth}px` } as React.CSSProperties}
+        >
+          {leftPanelVisible && (
           <aside className="graph-left-panel" aria-label="图谱图例与搜索结果">
             <div className="graph-panel-card graph-scene-card">
               <div className="graph-panel-heading">
                 <Database size={16} aria-hidden="true" />
                 <span>Scene</span>
+                <button
+                  type="button"
+                  className="graph-panel-icon-button"
+                  onClick={() => setLeftPanelVisible(false)}
+                  aria-label="隐藏图谱图例"
+                  title="隐藏图谱图例"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
               </div>
               <strong>{filteredNodes.length}</strong>
               <p>当前可见节点</p>
@@ -488,6 +523,7 @@ export function KnowledgeGraphExplorer({
               )}
             </div>
           </aside>
+          )}
 
           <div className="graph-canvas-column">
             <div className="graph-canvas-toolbar" aria-label="图谱场景控制">
@@ -528,6 +564,14 @@ export function KnowledgeGraphExplorer({
               <button type="button" onClick={resetView}>
                 <RotateCcw size={16} aria-hidden="true" />
                 重置
+              </button>
+              <button type="button" onClick={() => setLeftPanelVisible((value) => !value)}>
+                <Filter size={16} aria-hidden="true" />
+                {leftPanelVisible ? '隐藏图例' : '显示图例'}
+              </button>
+              <button type="button" onClick={() => setRightPanelVisible((value) => !value)}>
+                <PanelRightOpen size={16} aria-hidden="true" />
+                {rightPanelVisible ? '隐藏检查器' : '显示检查器'}
               </button>
               <span>
                 <MousePointer2 size={14} aria-hidden="true" />
@@ -652,12 +696,26 @@ export function KnowledgeGraphExplorer({
             </div>
           </div>
 
+          {rightPanelVisible && (
+          <div
+            className="graph-inspector-resizer"
+            role="separator"
+            aria-label="调整实体检查器宽度"
+            aria-orientation="vertical"
+            onPointerDown={startInspectorResize}
+            title="拖动调整检查器宽度"
+          />
+          )}
+          {rightPanelVisible && (
           <aside className="graph-right-panel" aria-label="图谱节点详情">
             <div className="graph-inspector-heading">
               <PanelRightOpen size={17} aria-hidden="true" />
               <span>实体检查器</span>
+              <button type="button" onClick={() => setRightPanelVisible(false)} aria-label="隐藏实体检查器" title="隐藏实体检查器">
+                <X size={16} aria-hidden="true" />
+              </button>
               {selectedNode && (
-                <button type="button" onClick={() => setSelectedNode(null)} aria-label="关闭节点详情">
+                <button type="button" onClick={() => setSelectedNode(null)} aria-label="清空节点详情" title="清空节点详情">
                   <X size={16} aria-hidden="true" />
                 </button>
               )}
@@ -745,6 +803,7 @@ export function KnowledgeGraphExplorer({
               </div>
             )}
           </aside>
+          )}
         </div>
       </div>
     </section>
