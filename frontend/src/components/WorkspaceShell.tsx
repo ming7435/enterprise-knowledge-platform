@@ -35,6 +35,7 @@ import type {
   DocumentContent,
   DocumentRecord,
   KnowledgeGraph,
+  KnowledgeGraphNode,
   KnowledgeBaseStatus,
   KnowledgeChunk,
   User,
@@ -614,6 +615,27 @@ export function WorkspaceShell({
     void loadAdvancedDashboard(documentIds);
   }
 
+  async function handleSearchGraphNodes(query: string, documentIds?: string[]) {
+    const result = await api.searchGraphNodes(
+      token,
+      workspace.id,
+      query,
+      20,
+      documentIds ?? selectedGraphDocumentIds
+    );
+    return result.results;
+  }
+
+  async function handleLoadGraphNodeDetail(nodeId: string): Promise<KnowledgeGraphNode | null> {
+    const result = await api.graphNodeDetail(token, workspace.id, nodeId);
+    return result.node ?? null;
+  }
+
+  async function handleLoadGraphNeighbors(nodeId: string): Promise<KnowledgeGraphNode[]> {
+    const result = await api.graphNeighbors(token, workspace.id, nodeId, 1);
+    return result.results;
+  }
+
   async function handleAddMember() {
     const email = memberEmail.trim();
     if (!email) {
@@ -926,6 +948,9 @@ export function WorkspaceShell({
             onQuestionChange={setChatQuestion}
             onSelectedKnowledgeDocumentIdsChange={setSelectedKnowledgeDocumentIds}
             onSelectedGraphDocumentIdsChange={handleGraphDocumentSelectionChange}
+            onSearchGraphNodes={handleSearchGraphNodes}
+            onLoadGraphNodeDetail={handleLoadGraphNodeDetail}
+            onLoadGraphNeighbors={handleLoadGraphNeighbors}
             onUseKnowledgeBaseForChatChange={setUseKnowledgeBaseForChat}
             onAsk={handleAskChat}
             onPrepareQuestion={handlePrepareQuestion}
@@ -1003,6 +1028,9 @@ export function WorkspaceShell({
             onQuestionChange={setChatQuestion}
             onSelectedKnowledgeDocumentIdsChange={setSelectedKnowledgeDocumentIds}
             onSelectedGraphDocumentIdsChange={handleGraphDocumentSelectionChange}
+            onSearchGraphNodes={handleSearchGraphNodes}
+            onLoadGraphNodeDetail={handleLoadGraphNodeDetail}
+            onLoadGraphNeighbors={handleLoadGraphNeighbors}
             onUseKnowledgeBaseForChatChange={setUseKnowledgeBaseForChat}
             onAsk={handleAskChat}
             onPrepareQuestion={handlePrepareQuestion}

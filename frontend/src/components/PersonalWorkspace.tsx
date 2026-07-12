@@ -33,6 +33,7 @@ import type {
   KnowledgeBaseStatus,
   KnowledgeChunk,
   KnowledgeGraph,
+  KnowledgeGraphNode,
   User,
   Workspace,
   WorkspaceModelConnectionTestResult,
@@ -114,6 +115,9 @@ interface PersonalWorkspacePanelProps {
   onQuestionChange: (value: string) => void;
   onSelectedKnowledgeDocumentIdsChange: (documentIds: string[]) => void;
   onSelectedGraphDocumentIdsChange: (documentIds: string[]) => void;
+  onSearchGraphNodes: (query: string, documentIds?: string[]) => Promise<KnowledgeGraphNode[]>;
+  onLoadGraphNodeDetail: (nodeId: string) => Promise<KnowledgeGraphNode | null>;
+  onLoadGraphNeighbors: (nodeId: string) => Promise<KnowledgeGraphNode[]>;
   onUseKnowledgeBaseForChatChange: (value: boolean) => void;
   onAsk: () => void;
   onPrepareQuestion: (question: string, documentIds?: string[]) => void;
@@ -180,6 +184,9 @@ export function PersonalWorkspacePanel({
   onQuestionChange,
   onSelectedKnowledgeDocumentIdsChange,
   onSelectedGraphDocumentIdsChange,
+  onSearchGraphNodes,
+  onLoadGraphNodeDetail,
+  onLoadGraphNeighbors,
   onUseKnowledgeBaseForChatChange,
   onAsk,
   onPrepareQuestion,
@@ -217,6 +224,9 @@ export function PersonalWorkspacePanel({
     onTestWorkspaceModelConnection,
     onSelectedKnowledgeDocumentIdsChange,
     onSelectedGraphDocumentIdsChange,
+    onSearchGraphNodes,
+    onLoadGraphNodeDetail,
+    onLoadGraphNeighbors,
     onUseKnowledgeBaseForChatChange
   };
 
@@ -1768,7 +1778,10 @@ function PersonalAdvancedDashboard({
   onRebuildGraph,
   onSearchQueryChange,
   onKnowledgeDocumentFilterChange,
-  onSelectedGraphDocumentIdsChange
+  onSelectedGraphDocumentIdsChange,
+  onSearchGraphNodes,
+  onLoadGraphNodeDetail,
+  onLoadGraphNeighbors
 }: PersonalSharedProps & {
   overview: AdvancedOverview | null;
   graph: KnowledgeGraph | null;
@@ -1840,6 +1853,9 @@ function PersonalAdvancedDashboard({
           }}
           onOpenQuestion={() => onNavigate('chat')}
           onDocumentSelectionChange={onSelectedGraphDocumentIdsChange}
+          onSearchGraphNodes={onSearchGraphNodes}
+          onLoadGraphNodeDetail={onLoadGraphNodeDetail}
+          onLoadGraphNeighbors={onLoadGraphNeighbors}
           onRefresh={onRefresh}
           onRebuild={onRebuildGraph}
         />
@@ -1910,6 +1926,9 @@ interface PersonalSharedProps {
   ) => Promise<WorkspaceModelConnectionTestResult | null>;
   onSelectedKnowledgeDocumentIdsChange: (documentIds: string[]) => void;
   onSelectedGraphDocumentIdsChange: (documentIds: string[]) => void;
+  onSearchGraphNodes: (query: string, documentIds?: string[]) => Promise<KnowledgeGraphNode[]>;
+  onLoadGraphNodeDetail: (nodeId: string) => Promise<KnowledgeGraphNode | null>;
+  onLoadGraphNeighbors: (nodeId: string) => Promise<KnowledgeGraphNode[]>;
   onUseKnowledgeBaseForChatChange: (value: boolean) => void;
 }
 

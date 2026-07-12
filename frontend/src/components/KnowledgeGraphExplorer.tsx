@@ -16,11 +16,11 @@ import {
   Sparkles,
   X
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { DocumentRecord, KnowledgeGraph, KnowledgeGraphEdge, KnowledgeGraphNode } from '../types';
+
+const KnowledgeGraph3D = lazy(() => import('./KnowledgeGraph3D'));
 
 type GraphMode = '2d' | '3d';
 type ResultView = 'graph' | 'table' | 'text' | 'code';
@@ -35,6 +35,9 @@ interface KnowledgeGraphExplorerProps {
   onSearchKnowledge: (keyword: string) => void;
   onOpenQuestion: () => void;
   onDocumentSelectionChange?: (documentIds: string[]) => void;
+  onSearchGraphNodes?: (query: string, documentIds?: string[]) => Promise<KnowledgeGraphNode[]>;
+  onLoadGraphNodeDetail?: (nodeId: string) => Promise<KnowledgeGraphNode | null>;
+  onLoadGraphNeighbors?: (nodeId: string) => Promise<KnowledgeGraphNode[]>;
   onRefresh: () => void;
   onRebuild?: () => void;
 }
@@ -77,6 +80,11 @@ const semanticTypeLabels: Record<string, string> = {
   process: '流程实体',
   config: '配置实体',
   permission: '权限实体',
+  person: '人物实体',
+  organization: '组织实体',
+  location: '地点实体',
+  product: '产品实体',
+  position: '职位实体',
   concept: '概念实体',
   技术组件: '技术组件',
   功能模块: '功能模块',
@@ -99,6 +107,11 @@ const semanticTypeColors: Record<string, string> = {
   process: '#f4c95d',
   config: '#d97706',
   permission: '#ef6666',
+  person: '#f97316',
+  organization: '#2563eb',
+  location: '#14b8a6',
+  product: '#8b5cf6',
+  position: '#d97706',
   concept: '#64748b',
   技术组件: '#5270c6',
   功能模块: '#3ba574',
@@ -120,6 +133,11 @@ const semanticTypeOrder = [
   'module',
   'process',
   'permission',
+  'person',
+  'organization',
+  'location',
+  'product',
+  'position',
   'config',
   'concept',
   '技术组件',
@@ -152,6 +170,12 @@ const relationColors: Record<string, string> = {
   上传: '#d97706',
   解析: '#d97706',
   入库: '#0f766e',
+  任职于: '#2563eb',
+  担任: '#d97706',
+  创立: '#7c3aed',
+  位于: '#0891b2',
+  发布: '#be123c',
+  合作: '#0f766e',
   contains: '#0f766e',
   has_chunk: '#0f766e',
   mentions: '#7c3aed',
@@ -171,6 +195,9 @@ export function KnowledgeGraphExplorer({
   onSearchKnowledge,
   onOpenQuestion,
   onDocumentSelectionChange,
+  onSearchGraphNodes,
+  onLoadGraphNodeDetail,
+  onLoadGraphNeighbors,
   onRefresh,
   onRebuild
 }: KnowledgeGraphExplorerProps) {
@@ -183,10 +210,22 @@ export function KnowledgeGraphExplorer({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
-  const [leftPanelVisible, setLeftPanelVisible] = useState(true);
+  const [leftPanelVisible, setLeftPanelVisible] = useState(false);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
-  const [rightPanelWidth, setRightPanelWidth] = useState(268);
+  const [leftPanelWidth, setLeftPanelWidth] = useState(260);
+  const [rightPanelWidth, setRightPanelWidth] = useState(360);
+  const [resultRailVisible, setResultRailVisible] = useState(true);
+  const [stageStatusVisible, setStageStatusVisible] = useState(false);
+  const [remoteSearchNodes, setRemoteSearchNodes] = useState<KnowledgeGraphNode[] | null>(null);
+  const [graphSearchLoading, setGraphSearchLoading] = useState(false);
+  const [graphSearchError, setGraphSearchError] = useState<string | null>(null);
+  const [nodeDetailLoading, setNodeDetailLoading] = useState(false);
+  const [nodeDetailError, setNodeDetailError] = useState<string | null>(null);
+  const [remoteNeighborIds, setRemoteNeighborIds] = useState<string[]>([]);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const rightPanelRef = useRef<HTMLElement | null>(null);
+  const detailRequestIdRef = useRef(0);
+  const searchCallbackRef = useRef(onSearchGraphNodes);
 
   const nodes = graph?.nodes ?? [];
   const edges = useMemo(() => normalizeEdges(graph), [graph]);
@@ -201,6 +240,43 @@ export function KnowledgeGraphExplorer({
       return currentValid.length ? currentValid : availableTypes;
     });
   }, [availableTypes]);
+
+  useEffect(() => {
+    searchCallbackRef.current = onSearchGraphNodes;
+  }, [onSearchGraphNodes]);
+
+  useEffect(() => {
+    const normalizedQuery = query.trim();
+    const searchGraph = searchCallbackRef.current;
+    if (!normalizedQuery || !searchGraph) {
+      setRemoteSearchNodes(null);
+      setGraphSearchLoading(false);
+      setGraphSearchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(async () => {
+      setGraphSearchLoading(true);
+      setGraphSearchError(null);
+      try {
+        const results = await searchGraph(normalizedQuery, selectedDocumentIds);
+        if (!cancelled) setRemoteSearchNodes(results);
+      } catch (error) {
+        if (!cancelled) {
+          setRemoteSearchNodes([]);
+          setGraphSearchError(error instanceof Error ? error.message : '图谱搜索失败');
+        }
+      } finally {
+        if (!cancelled) setGraphSearchLoading(false);
+      }
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [query, selectedDocumentIds]);
 
   const filteredNodes = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -259,9 +335,54 @@ export function KnowledgeGraphExplorer({
     onDocumentSelectionChange(nextIds);
   }
 
-  function activateNode(node: KnowledgeGraphNode) {
+  async function activateNode(node: KnowledgeGraphNode) {
     setSelectedNode(node);
     setRightPanelVisible(true);
+    setNodeDetailError(null);
+    setRemoteNeighborIds([]);
+    window.setTimeout(() => rightPanelRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+    if (!onLoadGraphNodeDetail && !onLoadGraphNeighbors) return;
+
+    const requestId = detailRequestIdRef.current + 1;
+    detailRequestIdRef.current = requestId;
+    setNodeDetailLoading(true);
+    const [detailResult, neighborsResult] = await Promise.allSettled([
+      onLoadGraphNodeDetail ? onLoadGraphNodeDetail(node.id) : Promise.resolve(node),
+      onLoadGraphNeighbors ? onLoadGraphNeighbors(node.id) : Promise.resolve([])
+    ]);
+    if (detailRequestIdRef.current !== requestId) return;
+
+    let requestError: string | null = null;
+    if (detailResult.status === 'fulfilled' && detailResult.value) {
+      setSelectedNode(detailResult.value);
+    } else if (detailResult.status === 'rejected') {
+      requestError = detailResult.reason instanceof Error ? detailResult.reason.message : '节点详情加载失败';
+    }
+    if (neighborsResult.status === 'fulfilled') {
+      setRemoteNeighborIds(neighborsResult.value.map((item) => item.id));
+    } else if (!requestError) {
+      requestError = neighborsResult.reason instanceof Error ? neighborsResult.reason.message : '邻居节点加载失败';
+    }
+    setNodeDetailError(requestError);
+    setNodeDetailLoading(false);
+  }
+
+  function startLeftPanelResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = leftPanelWidth;
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextWidth = startWidth + (moveEvent.clientX - startX);
+      setLeftPanelWidth(Math.max(210, Math.min(420, nextWidth)));
+    };
+    const handlePointerUp = () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      document.body.classList.remove('graph-resizing-panel');
+    };
+    document.body.classList.add('graph-resizing-panel');
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
   }
 
   function startInspectorResize(event: React.PointerEvent<HTMLDivElement>) {
@@ -270,7 +391,7 @@ export function KnowledgeGraphExplorer({
     const startWidth = rightPanelWidth;
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextWidth = startWidth - (moveEvent.clientX - startX);
-      setRightPanelWidth(Math.max(220, Math.min(460, nextWidth)));
+      setRightPanelWidth(Math.max(280, Math.min(620, nextWidth)));
     };
     const handlePointerUp = () => {
       window.removeEventListener('pointermove', handlePointerMove);
@@ -322,7 +443,7 @@ export function KnowledgeGraphExplorer({
     });
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12);
   }, [edges]);
-  const searchResultNodes = useMemo(
+  const localSearchResultNodes = useMemo(
     () =>
       [...filteredNodes]
         .sort((a, b) => {
@@ -333,6 +454,7 @@ export function KnowledgeGraphExplorer({
         .slice(0, 9),
     [filteredNodes]
   );
+  const searchResultNodes = query.trim() && remoteSearchNodes !== null ? remoteSearchNodes.slice(0, 20) : localSearchResultNodes;
   const selectedRelations = useMemo(
     () =>
       selectedNode
@@ -348,6 +470,15 @@ export function KnowledgeGraphExplorer({
   const selectedFilename = selectedNode
     ? String(selectedNode.properties?.last_filename || selectedNode.properties?.filename || '暂无来源文件')
     : '';
+  const workbenchColumns = [
+    leftPanelVisible ? 'var(--graph-left-panel-width, 260px)' : '',
+    leftPanelVisible ? '8px' : '',
+    'minmax(0, 1fr)',
+    rightPanelVisible ? '8px' : '',
+    rightPanelVisible ? 'var(--graph-inspector-width, 360px)' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <section className="graph-explorer neo4j-workbench" aria-label={`${workspaceLabel}知识图谱`}>
@@ -430,7 +561,13 @@ export function KnowledgeGraphExplorer({
 
         <div
           className={`graph-workbench-grid ${leftPanelVisible ? '' : 'left-panel-hidden'} ${rightPanelVisible ? '' : 'right-panel-hidden'}`}
-          style={{ '--graph-inspector-width': `${rightPanelWidth}px` } as React.CSSProperties}
+          style={
+            {
+              '--graph-left-panel-width': `${leftPanelWidth}px`,
+              '--graph-inspector-width': `${rightPanelWidth}px`,
+              gridTemplateColumns: workbenchColumns
+            } as React.CSSProperties
+          }
         >
           {leftPanelVisible && (
           <aside className="graph-left-panel" aria-label="图谱图例与搜索结果">
@@ -503,7 +640,11 @@ export function KnowledgeGraphExplorer({
                 <Search size={16} aria-hidden="true" />
                 <span>检索结果</span>
               </div>
-              {searchResultNodes.length === 0 ? (
+              {graphSearchLoading ? (
+                <p className="graph-muted">正在搜索完整图谱...</p>
+              ) : graphSearchError ? (
+                <p className="graph-inline-error">{graphSearchError}</p>
+              ) : searchResultNodes.length === 0 ? (
                 <p className="graph-muted">{query.trim() ? '没有找到相关实体。' : '输入关键词后在当前图谱中定位实体。'}</p>
               ) : (
                 searchResultNodes.map((node) => (
@@ -523,6 +664,17 @@ export function KnowledgeGraphExplorer({
               )}
             </div>
           </aside>
+          )}
+
+          {leftPanelVisible && (
+            <div
+              className="graph-panel-resizer"
+              role="separator"
+              aria-label="调整图谱图例宽度"
+              aria-orientation="vertical"
+              onPointerDown={startLeftPanelResize}
+              title="拖动调整图谱图例宽度"
+            />
           )}
 
           <div className="graph-canvas-column">
@@ -573,14 +725,32 @@ export function KnowledgeGraphExplorer({
                 <PanelRightOpen size={16} aria-hidden="true" />
                 {rightPanelVisible ? '隐藏检查器' : '显示检查器'}
               </button>
+              <button
+                type="button"
+                aria-pressed={resultRailVisible}
+                onClick={() => setResultRailVisible((value) => !value)}
+                title="显示或隐藏 Graph、Table、Text、Code 结果栏"
+              >
+                <Database size={16} aria-hidden="true" />
+                {resultRailVisible ? '隐藏结果栏' : '显示结果栏'}
+              </button>
+              <button
+                type="button"
+                aria-pressed={stageStatusVisible}
+                onClick={() => setStageStatusVisible((value) => !value)}
+                title="显示或隐藏画布状态与快捷控制"
+              >
+                <Eye size={16} aria-hidden="true" />
+                {stageStatusVisible ? '隐藏状态' : '显示状态'}
+              </button>
               <span>
                 <MousePointer2 size={14} aria-hidden="true" />
                 拖拽节点，Ctrl + 滚轮缩放
               </span>
             </div>
 
-            <div className="graph-result-frame">
-              <div className="graph-result-rail" role="tablist" aria-label="图谱结果视图">
+            <div className={`graph-result-frame ${resultRailVisible ? '' : 'rail-hidden'}`}>
+              {resultRailVisible && <div className="graph-result-rail" role="tablist" aria-label="图谱结果视图">
                 {[
                   ['graph', 'Graph'],
                   ['table', 'Table'],
@@ -598,10 +768,10 @@ export function KnowledgeGraphExplorer({
                     {label}
                   </button>
                 ))}
-              </div>
+              </div>}
               <div className="graph-result-body">
                 {resultView === 'graph' ? (
-                  <div className="graph-stage">
+                  <div className={`graph-stage ${stageStatusVisible ? 'show-stage-status' : ''}`}>
                     {loading && <div className="graph-overlay">知识图谱加载中...</div>}
                     {empty && (
                       <div className="graph-overlay empty">
@@ -624,6 +794,7 @@ export function KnowledgeGraphExplorer({
                         pan={pan}
                         draggingNodeId={draggingNodeId}
                         selectedNodeId={selectedNode?.id ?? null}
+                        highlightedNodeIds={remoteNeighborIds}
                         onZoom={setZoom}
                         onPan={setPan}
                         onDragStart={setDraggingNodeId}
@@ -631,20 +802,28 @@ export function KnowledgeGraphExplorer({
                         onMoveNode={(nodeId, point) =>
                           setPositions((items) => ({
                             ...items,
-                            [nodeId]: point
+                            [nodeId]: clampGraphPoint(point)
                           }))
                         }
                         onSelect={activateNode}
                       />
                     ) : (
-                      <Graph3D
-                        nodes={filteredNodes}
-                        edges={filteredEdges}
-                        selectedNodeId={selectedNode?.id ?? null}
-                        onSelect={activateNode}
-                      />
+                      <Suspense fallback={<div className="graph-overlay">正在加载 3D 图谱引擎...</div>}>
+                        <KnowledgeGraph3D
+                          nodes={filteredNodes}
+                          edges={filteredEdges}
+                          selectedNodeId={selectedNode?.id ?? null}
+                          typeLabels={semanticTypeLabels}
+                          typeOrder={semanticTypeOrder}
+                          getNodeType={semanticTypeOfNode}
+                          getNodeColor={colorForType}
+                          getRelationColor={colorForRelation}
+                          trimLabel={trimLabel}
+                          onSelect={activateNode}
+                        />
+                      </Suspense>
                     )}
-                    {!loading && !empty && !disabled && !unavailable && (
+                    {stageStatusVisible && !loading && !empty && !disabled && !unavailable && (
                       <>
                         <div className="graph-result-status">
                           Displaying {filteredNodes.length} nodes, {filteredEdges.length} relationships.
@@ -707,7 +886,7 @@ export function KnowledgeGraphExplorer({
           />
           )}
           {rightPanelVisible && (
-          <aside className="graph-right-panel" aria-label="图谱节点详情">
+          <aside ref={rightPanelRef} className="graph-right-panel" aria-label="图谱节点详情">
             <div className="graph-inspector-heading">
               <PanelRightOpen size={17} aria-hidden="true" />
               <span>实体检查器</span>
@@ -722,6 +901,8 @@ export function KnowledgeGraphExplorer({
             </div>
             {selectedNode ? (
               <>
+                {nodeDetailLoading && <div className="graph-inspector-state">正在加载节点详情与邻居...</div>}
+                {nodeDetailError && <div className="graph-inspector-state error">{nodeDetailError}</div>}
                 <span className="status-badge indexed">
                   {semanticTypeLabels[semanticTypeOfNode(selectedNode)] ?? semanticTypeOfNode(selectedNode)}
                 </span>
@@ -762,7 +943,9 @@ export function KnowledgeGraphExplorer({
                       <button type="button" key={edge.id} onClick={() => setQuery(edge.label)}>
                         <i style={{ backgroundColor: colorForRelation(edge.label) }} />
                         <span>{edge.label}</span>
-                        <small>{edge.source === selectedNode.id ? '出边' : '入边'}</small>
+                        <small>
+                          {edge.source === selectedNode.id ? '出边' : '入边'} · {Number(edge.properties?.occurrences ?? 1)} 次
+                        </small>
                       </button>
                     ))
                   )}
@@ -933,6 +1116,7 @@ function Graph2D({
   pan,
   draggingNodeId,
   selectedNodeId,
+  highlightedNodeIds,
   onZoom,
   onPan,
   onDragStart,
@@ -948,6 +1132,7 @@ function Graph2D({
   pan: { x: number; y: number };
   draggingNodeId: string | null;
   selectedNodeId: string | null;
+  highlightedNodeIds: string[];
   onZoom: (zoom: number) => void;
   onPan: (pan: { x: number; y: number }) => void;
   onDragStart: (nodeId: string) => void;
@@ -979,14 +1164,14 @@ function Graph2D({
   }, [pan]);
   const nodeById = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
   const connectedNodeIds = useMemo(() => {
-    const ids = new Set<string>();
+    const ids = new Set<string>(highlightedNodeIds);
     if (!selectedNodeId) return ids;
     edges.forEach((edge) => {
       if (edge.source === selectedNodeId) ids.add(edge.target);
       if (edge.target === selectedNodeId) ids.add(edge.source);
     });
     return ids;
-  }, [edges, selectedNodeId]);
+  }, [edges, highlightedNodeIds, selectedNodeId]);
 
   function svgPoint(event: React.PointerEvent<SVGElement>) {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -1120,7 +1305,16 @@ function Graph2D({
           const source = positions[edge.source];
           const target = positions[edge.target];
           if (!source || !target) return null;
-          const labelPoint = edgeLabelPoint(source, target, index);
+          const sourceNode = nodeById.get(edge.source);
+          const targetNode = nodeById.get(edge.target);
+          if (!sourceNode || !targetNode) return null;
+          const geometry = clippedEdgeGeometry(
+            source,
+            target,
+            index,
+            nodeRadius(sourceNode),
+            nodeRadius(targetNode)
+          );
           const relationColor = colorForRelation(edge.label);
           const connected = selectedNodeId ? edge.source === selectedNodeId || edge.target === selectedNodeId : false;
           const dimmed = !!selectedNodeId && !connected;
@@ -1140,11 +1334,11 @@ function Graph2D({
             >
               <path
                 className="graph-edge-path"
-                d={edgePath(source, target, index)}
+                d={geometry.path}
                 markerEnd="url(#graph-arrow)"
               />
               {showLabel && (
-                <g className="graph-edge-label-wrap" transform={`translate(${labelPoint.x} ${labelPoint.y})`}>
+                <g className="graph-edge-label-wrap" transform={`translate(${geometry.label.x} ${geometry.label.y})`}>
                   <rect className="graph-edge-label-pill" x={-labelWidth / 2} y="-11" width={labelWidth} height="22" rx="11" />
                   <text className="graph-edge-label" y="4">
                     {label}
@@ -1168,6 +1362,15 @@ function Graph2D({
               className={`graph-svg-node ${selected ? 'selected' : ''} ${connected ? 'connected' : ''} ${dimmed ? 'dimmed' : ''}`}
               key={node.id}
               transform={`translate(${point.x} ${point.y})`}
+              role="button"
+              tabIndex={0}
+              aria-label={`${node.label}，${semanticTypeLabels[type] ?? type}`}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onSelect(node);
+                }
+              }}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
                 event.preventDefault();
@@ -1190,23 +1393,10 @@ function Graph2D({
                 onDragStart(node.id);
               }}
             >
-              <circle className="graph-node-hit-area" r={radius + 28} />
-              <circle className="graph-node-selection-ring" r={radius + 18} fill="none" />
-              <circle className="graph-node-halo" r={radius + 10} fill={colorForType(type)} />
-              {selected && (
-                <g className="graph-node-actions" aria-hidden="true">
-                  <circle cx={0} cy={-(radius + 34)} r="12" />
-                  <circle cx={radius + 34} cy="0" r="12" />
-                  <circle cx={0} cy={radius + 34} r="12" />
-                  <circle cx={-(radius + 34)} cy="0" r="12" />
-                  <text x="0" y={-(radius + 30)}>+</text>
-                  <text x={radius + 34} y="4">i</text>
-                  <text x="0" y={radius + 38}>×</text>
-                  <text x={-(radius + 34)} y="4">↺</text>
-                </g>
-              )}
+              <circle className="graph-node-hit-area" r={radius + 10} />
+              <circle className="graph-node-selection-ring" r={radius + 8} fill="none" />
+              <circle className="graph-node-halo" r={radius + 5} fill={colorForType(type)} />
               <circle className="graph-node-core" r={radius} fill={colorForType(type)} />
-              <circle className="graph-node-inner" r={Math.max(8, radius - 7)} />
               <text className="graph-node-label" y="4">{trimLabel(node.label, radius > 25 ? 8 : 5)}</text>
               <text className="graph-node-caption" y={radius + 19}>{semanticTypeLabels[type] ?? type}</text>
             </g>
@@ -1216,184 +1406,6 @@ function Graph2D({
       </g>
     </svg>
   );
-}
-
-function Graph3D({
-  nodes,
-  edges,
-  selectedNodeId,
-  onSelect
-}: {
-  nodes: KnowledgeGraphNode[];
-  edges: KnowledgeGraphEdge[];
-  selectedNodeId: string | null;
-  onSelect: (node: KnowledgeGraphNode) => void;
-}) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    container.replaceChildren();
-
-    const width = Math.max(container.clientWidth, 760);
-    const height = Math.max(container.clientHeight || 810, 560);
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#f8fbff');
-    scene.fog = new THREE.Fog('#f8fbff', 760, 1580);
-
-    const camera = new THREE.PerspectiveCamera(36, width / height, 1, 2600);
-    camera.position.set(0, 48, nodes.length <= 3 ? 520 : 920);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, height);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    container.appendChild(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.autoRotate = false;
-    controls.enableZoom = false;
-    controls.enablePan = true;
-    controls.screenSpacePanning = true;
-    controls.minDistance = 320;
-    controls.maxDistance = 1320;
-
-    function handleGraphWheel(event: WheelEvent) {
-      if (!event.ctrlKey) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const direction = event.deltaY > 0 ? 1 : -1;
-      const distance = camera.position.length();
-      const nextDistance = Math.min(1320, Math.max(320, distance + direction * 46));
-      camera.position.setLength(nextDistance);
-    }
-    renderer.domElement.addEventListener('wheel', handleGraphWheel, { passive: false });
-
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xdbeafe, 1.25));
-    scene.add(new THREE.AmbientLight(0xffffff, 0.62));
-    const pointLight = new THREE.PointLight(0xffffff, 1.8);
-    pointLight.position.set(260, 240, 380);
-    scene.add(pointLight);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    directionalLight.position.set(-180, 260, 320);
-    scene.add(directionalLight);
-    const accentLight = new THREE.PointLight(0x14b8a6, 1.1);
-    accentLight.position.set(-260, -120, 260);
-    scene.add(accentLight);
-    const grid = new THREE.GridHelper(900, 22, '#99f6e4', '#d7eef0');
-    grid.position.y = -260;
-    scene.add(grid);
-
-    const positions = compute3DLayout(nodes, edges);
-    const meshById = new Map<string, THREE.Mesh>();
-    const nodeByMesh = new Map<THREE.Object3D, KnowledgeGraphNode>();
-
-    nodes.forEach((node) => {
-      const position = positions[node.id] ?? new THREE.Vector3();
-      const sparseBoost = nodes.length <= 3 ? 7 : 0;
-      const normalizedWeight = Math.max(1, Math.min(node.weight || 1, 100));
-      const size = Math.min(22, 7 + sparseBoost + Math.sqrt(normalizedWeight) * 1.25);
-      const semanticType = semanticTypeOfNode(node);
-      const color = new THREE.Color(colorForType(semanticType));
-      const geometry = new THREE.SphereGeometry(size, 36, 22);
-      const material = new THREE.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: selectedNodeId === node.id ? 0.2 : 0.07,
-        roughness: 0.36,
-        metalness: selectedNodeId === node.id ? 0.28 : 0.08
-      });
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.copy(position);
-      mesh.userData.nodeId = node.id;
-      scene.add(mesh);
-      meshById.set(node.id, mesh);
-      nodeByMesh.set(mesh, node);
-
-      const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(size * 1.52, 32, 18),
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: selectedNodeId === node.id ? 0.2 : 0.08,
-          depthWrite: false
-        })
-      );
-      halo.position.copy(position);
-      scene.add(halo);
-
-      if (nodes.length <= 36 || normalizedWeight >= 55 || selectedNodeId === node.id) {
-        const label = makeTextSprite(node.label, semanticTypeLabels[semanticType] ?? semanticType, colorForType(semanticType));
-        label.position.copy(position.clone().add(new THREE.Vector3(0, size + 22, 0)));
-        scene.add(label);
-      }
-    });
-
-    edges.forEach((edge) => {
-      const source = meshById.get(edge.source);
-      const target = meshById.get(edge.target);
-      if (!source || !target) return;
-      const midPoint = source.position.clone().add(target.position).multiplyScalar(0.5);
-      midPoint.z += 28;
-      const curve = new THREE.QuadraticBezierCurve3(source.position, midPoint, target.position);
-      const geometry = new THREE.BufferGeometry().setFromPoints(curve.getPoints(28));
-      const connected = selectedNodeId ? edge.source === selectedNodeId || edge.target === selectedNodeId : false;
-      const material = new THREE.LineBasicMaterial({
-        color: new THREE.Color(connected ? colorForRelation(edge.label) : '#94a3b8'),
-        transparent: true,
-        opacity: connected ? 0.9 : 0.46
-      });
-      scene.add(new THREE.Line(geometry, material));
-    });
-
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    function handleClick(event: MouseEvent) {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(Array.from(meshById.values()), false)[0];
-      if (hit) {
-        const node = nodeByMesh.get(hit.object);
-        if (node) onSelect(node);
-      }
-    }
-    renderer.domElement.addEventListener('click', handleClick);
-
-    let active = true;
-    function animate() {
-      if (!active) return;
-      controls.update();
-      renderer.render(scene, camera);
-      requestAnimationFrame(animate);
-    }
-    animate();
-
-    return () => {
-      active = false;
-      renderer.domElement.removeEventListener('click', handleClick);
-      renderer.domElement.removeEventListener('wheel', handleGraphWheel);
-      controls.dispose();
-      renderer.dispose();
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        mesh.geometry?.dispose?.();
-        const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(material)) {
-          material.forEach((item) => item.dispose());
-        } else {
-          material?.dispose?.();
-        }
-      });
-      container.replaceChildren();
-    };
-  }, [edges, nodes, onSelect, selectedNodeId]);
-
-  return <div ref={containerRef} className="graph-3d-canvas" aria-label="3D 知识图谱" />;
 }
 
 function normalizeEdges(graph: KnowledgeGraph | null): KnowledgeGraphEdge[] {
@@ -1508,95 +1520,6 @@ function computeLayout(nodes: KnowledgeGraphNode[], edges: KnowledgeGraphEdge[] 
   return positions;
 }
 
-function compute3DLayout(nodes: KnowledgeGraphNode[], edges: KnowledgeGraphEdge[] = []) {
-  const result: Record<string, THREE.Vector3> = {};
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const degree = new Map<string, number>();
-  const adjacency = new Map<string, string[]>();
-  edges.forEach((edge) => {
-    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) return;
-    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
-    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
-    adjacency.set(edge.source, [...(adjacency.get(edge.source) ?? []), edge.target]);
-    adjacency.set(edge.target, [...(adjacency.get(edge.target) ?? []), edge.source]);
-  });
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const score = (node: KnowledgeGraphNode) => (node.weight ?? 1) + (degree.get(node.id) ?? 0) * 18;
-  const sorted = [...nodes].sort((a, b) => score(b) - score(a));
-  const root = sorted[0];
-  if (root) result[root.id] = new THREE.Vector3(0, 0, 0);
-  const placed = new Set<string>(root ? [root.id] : []);
-  const others = sorted.slice(1);
-
-  const rootNeighbors = root
-    ? (adjacency.get(root.id) ?? [])
-        .map((id) => byId.get(id))
-        .filter((node): node is KnowledgeGraphNode => !!node)
-        .sort((a, b) => score(b) - score(a))
-    : [];
-  const firstRingCount = Math.min(rootNeighbors.length, 18);
-  rootNeighbors.slice(0, firstRingCount).forEach((node, index) => {
-    const angle = (Math.PI * 2 * index) / Math.max(firstRingCount, 1);
-    const radius = 430 + Math.min(firstRingCount, 12) * 8;
-    result[node.id] = new THREE.Vector3(
-      Math.cos(angle) * radius,
-      ((index % 5) - 2) * 45,
-      Math.sin(angle) * radius
-    );
-    placed.add(node.id);
-  });
-
-  others
-    .filter((node) => !placed.has(node.id) && (adjacency.get(node.id) ?? []).some((id) => placed.has(id)))
-    .forEach((node, index) => {
-      const anchorId = (adjacency.get(node.id) ?? []).find((id) => placed.has(id));
-      const anchor = anchorId ? result[anchorId] : new THREE.Vector3();
-      const angle = index * 2.399963229728653;
-      const distance = 120 + (index % 5) * 24;
-      result[node.id] = anchor.clone().add(
-        new THREE.Vector3(
-          Math.cos(angle) * distance,
-          ((index % 7) - 3) * 24,
-          Math.sin(angle) * distance
-        )
-      );
-      placed.add(node.id);
-    });
-
-  const groups = groupNodesBySemanticType(others.filter((node) => !placed.has(node.id)));
-  const activeTypes = semanticTypeOrder.filter((type) => groups.get(type)?.length);
-  const fallbackTypes = Array.from(groups.keys()).filter((type) => !activeTypes.includes(type));
-  const orderedTypes = [...activeTypes, ...fallbackTypes];
-
-  orderedTypes.forEach((type, groupIndex) => {
-    const groupNodes = groups.get(type) ?? [];
-    const groupAngle = (Math.PI * 2 * groupIndex) / Math.max(orderedTypes.length, 1);
-    const groupSizeBoost = Math.min(groupNodes.length, 44);
-    const groupCenter = new THREE.Vector3(
-      Math.cos(groupAngle) * (390 + groupSizeBoost * 2.6),
-      ((groupIndex % 3) - 1) * 105,
-      Math.sin(groupAngle) * (390 + groupSizeBoost * 2.6)
-    );
-    groupNodes.forEach((node, index) => {
-      if (index === 0) {
-        result[node.id] = groupCenter;
-        return;
-      }
-      const count = Math.max(groupNodes.length - 1, 1);
-      const localAngle = index * 2.399963229728653;
-      const localRadius = Math.min(245, 52 + Math.sqrt(index) * 34 + count * 1.2);
-      result[node.id] = groupCenter.clone().add(
-        new THREE.Vector3(
-          Math.cos(localAngle) * localRadius,
-          ((index % 7) - 3) * 24,
-          Math.sin(localAngle) * localRadius
-        )
-      );
-    });
-  });
-  return result;
-}
-
 function groupNodesBySemanticType(nodes: KnowledgeGraphNode[]) {
   const groups = new Map<string, KnowledgeGraphNode[]>();
   nodes.forEach((node) => {
@@ -1611,16 +1534,43 @@ function groupNodesBySemanticType(nodes: KnowledgeGraphNode[]) {
   return groups;
 }
 
-function edgePath(source: { x: number; y: number }, target: { x: number; y: number }, index: number) {
+function clippedEdgeGeometry(
+  source: { x: number; y: number },
+  target: { x: number; y: number },
+  index: number,
+  sourceRadius: number,
+  targetRadius: number
+) {
   const control = edgeControlPoint(source, target, index);
-  return `M ${source.x} ${source.y} Q ${control.x} ${control.y} ${target.x} ${target.y}`;
+  const startDirection = normalizedVector(control.x - source.x, control.y - source.y);
+  const endDirection = normalizedVector(control.x - target.x, control.y - target.y);
+  const start = {
+    x: source.x + startDirection.x * (sourceRadius + 3),
+    y: source.y + startDirection.y * (sourceRadius + 3)
+  };
+  const end = {
+    x: target.x + endDirection.x * (targetRadius + 8),
+    y: target.y + endDirection.y * (targetRadius + 8)
+  };
+  return {
+    path: `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`,
+    label: {
+      x: (start.x + 2 * control.x + end.x) / 4,
+      y: (start.y + 2 * control.y + end.y) / 4
+    }
+  };
 }
 
-function edgeLabelPoint(source: { x: number; y: number }, target: { x: number; y: number }, index: number) {
-  const control = edgeControlPoint(source, target, index);
+function normalizedVector(x: number, y: number) {
+  const length = Math.max(Math.hypot(x, y), 0.001);
+  return { x: x / length, y: y / length };
+}
+
+function clampGraphPoint(point: { x: number; y: number }) {
+  const padding = 44;
   return {
-    x: (source.x + 2 * control.x + target.x) / 4,
-    y: (source.y + 2 * control.y + target.y) / 4
+    x: Math.min(GRAPH_WIDTH - padding, Math.max(padding, point.x)),
+    y: Math.min(GRAPH_HEIGHT - padding, Math.max(padding, point.y))
   };
 }
 
@@ -1640,46 +1590,6 @@ function edgeControlPoint(source: { x: number; y: number }, target: { x: number;
 function nodeRadius(node: KnowledgeGraphNode) {
   const weight = Math.max(1, Math.min(node.weight ?? 1, 100));
   return Math.min(30, 11 + Math.sqrt(weight) * 1.75);
-}
-
-function makeTextSprite(text: string, typeLabel: string, color: string) {
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d');
-  canvas.width = 512;
-  canvas.height = 128;
-  if (context) {
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = 'rgba(255,255,255,0.9)';
-    roundRect(context, 26, 18, 460, 86, 22);
-    context.fill();
-    context.strokeStyle = color;
-    context.lineWidth = 3;
-    roundRect(context, 26, 18, 460, 86, 22);
-    context.stroke();
-    context.fillStyle = '#0f172a';
-    context.font = '700 28px Arial, sans-serif';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(trimLabel(text, 18), canvas.width / 2, 56);
-    context.fillStyle = '#64748b';
-    context.font = '700 18px Arial, sans-serif';
-    context.fillText(typeLabel, canvas.width / 2, 86);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(152, 38, 1);
-  return sprite;
-}
-
-function roundRect(context: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
-  context.beginPath();
-  context.moveTo(x + radius, y);
-  context.arcTo(x + width, y, x + width, y + height, radius);
-  context.arcTo(x + width, y + height, x, y + height, radius);
-  context.arcTo(x, y + height, x, y, radius);
-  context.arcTo(x, y, x + width, y, radius);
-  context.closePath();
 }
 
 function trimLabel(text: string, maxLength = 18) {

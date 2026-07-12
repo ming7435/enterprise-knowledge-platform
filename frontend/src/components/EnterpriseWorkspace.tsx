@@ -39,6 +39,7 @@ import type {
   KnowledgeBaseStatus,
   KnowledgeChunk,
   KnowledgeGraph,
+  KnowledgeGraphNode,
   User,
   Workspace,
   WorkspaceModelConnectionTestResult,
@@ -143,6 +144,9 @@ interface EnterpriseWorkspacePanelProps {
   onQuestionChange: (value: string) => void;
   onSelectedKnowledgeDocumentIdsChange: (documentIds: string[]) => void;
   onSelectedGraphDocumentIdsChange: (documentIds: string[]) => void;
+  onSearchGraphNodes: (query: string, documentIds?: string[]) => Promise<KnowledgeGraphNode[]>;
+  onLoadGraphNodeDetail: (nodeId: string) => Promise<KnowledgeGraphNode | null>;
+  onLoadGraphNeighbors: (nodeId: string) => Promise<KnowledgeGraphNode[]>;
   onUseKnowledgeBaseForChatChange: (value: boolean) => void;
   onAsk: () => void;
   onPrepareQuestion: (question: string, documentIds?: string[]) => void;
@@ -262,6 +266,9 @@ export function EnterpriseWorkspacePanel({
   onQuestionChange,
   onSelectedKnowledgeDocumentIdsChange,
   onSelectedGraphDocumentIdsChange,
+  onSearchGraphNodes,
+  onLoadGraphNodeDetail,
+  onLoadGraphNeighbors,
   onUseKnowledgeBaseForChatChange,
   onAsk,
   onPrepareQuestion,
@@ -330,6 +337,9 @@ export function EnterpriseWorkspacePanel({
     onTestWorkspaceModelConnection,
     onSelectedKnowledgeDocumentIdsChange,
     onSelectedGraphDocumentIdsChange,
+    onSearchGraphNodes,
+    onLoadGraphNodeDetail,
+    onLoadGraphNeighbors,
     onUseKnowledgeBaseForChatChange
   };
 
@@ -489,6 +499,9 @@ interface EnterpriseSharedProps {
   ) => Promise<WorkspaceModelConnectionTestResult | null>;
   onSelectedKnowledgeDocumentIdsChange: (documentIds: string[]) => void;
   onSelectedGraphDocumentIdsChange: (documentIds: string[]) => void;
+  onSearchGraphNodes: (query: string, documentIds?: string[]) => Promise<KnowledgeGraphNode[]>;
+  onLoadGraphNodeDetail: (nodeId: string) => Promise<KnowledgeGraphNode | null>;
+  onLoadGraphNeighbors: (nodeId: string) => Promise<KnowledgeGraphNode[]>;
   onUseKnowledgeBaseForChatChange: (value: boolean) => void;
 }
 
@@ -1939,7 +1952,10 @@ function EnterpriseAdvancedDashboard({
   onRebuildGraph,
   onSearchQueryChange,
   onKnowledgeDocumentFilterChange,
-  onSelectedGraphDocumentIdsChange
+  onSelectedGraphDocumentIdsChange,
+  onSearchGraphNodes,
+  onLoadGraphNodeDetail,
+  onLoadGraphNeighbors
 }: EnterpriseSharedProps & {
   overview: AdvancedOverview | null;
   graph: KnowledgeGraph | null;
@@ -2014,6 +2030,9 @@ function EnterpriseAdvancedDashboard({
           }}
           onOpenQuestion={() => onNavigate('chat')}
           onDocumentSelectionChange={onSelectedGraphDocumentIdsChange}
+          onSearchGraphNodes={onSearchGraphNodes}
+          onLoadGraphNodeDetail={onLoadGraphNodeDetail}
+          onLoadGraphNeighbors={onLoadGraphNeighbors}
           onRefresh={onRefresh}
           onRebuild={onRebuildGraph}
         />
