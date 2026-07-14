@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.entities import utc_now
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, validate_password_strength, verify_password
 from app.models.entities import User
 from app.services.email_verification_service import EmailVerificationService
 from app.services.workspace_service import create_workspace_with_owner, write_audit_log
@@ -69,6 +69,14 @@ def register_user(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(exc),
             ) from exc
+
+    try:
+        validate_password_strength(password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
     user = User(
         email=normalized_email,
@@ -195,6 +203,13 @@ def reset_user_password(
             code=verification_code,
             purpose="reset_password",
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    try:
+        validate_password_strength(new_password)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

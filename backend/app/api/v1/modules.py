@@ -83,7 +83,7 @@ def list_documents(
     require_workspace_member(db, user=current_user, workspace_id=workspace_id)
     return db.execute(
         select(Document)
-        .where(Document.workspace_id == workspace_id)
+        .where(Document.workspace_id == workspace_id, Document.deleted_at.is_(None))
         .order_by(Document.created_at.desc())
     ).scalars().all()
 

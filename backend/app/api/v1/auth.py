@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db, get_settings
 from app.core.config import Settings
 from app.core.security import create_access_token
+from app.core.limiter import limiter
 from app.models.entities import User
 from app.schemas.auth import (
     LoginRequest,
@@ -35,7 +36,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     response_model=RegisterResponse,
     status_code=status.HTTP_201_CREATED,
 )
+@limiter.limit("5/minute")          # 每 IP 每分钟最多注册 5 次
 def register(
+    request: Request,
     payload: RegisterRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -60,7 +63,9 @@ def register(
     response_model=SendEmailCodeResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
+@limiter.limit("5/minute")          # 每 IP 每分钟最多发送 5 次验证码
 def send_email_code(
+    request: Request,
     payload: SendEmailCodeRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -69,21 +74,16 @@ def send_email_code(
     user = db.execute(
         select(User).where(User.email == normalized_email)
     ).scalar_one_or_none()
+
     if payload.purpose == "register" and user is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="邮箱已注册，请直接登录",
         )
-    if payload.purpose == "login" and user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="邮箱未注册，请先注册",
-        )
-    if payload.purpose == "reset_password" and user is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="邮箱未注册，请先注册",
-        )
+
+    # 防用户枚举：邮箱不存在时仍返回统一成功消息，不实际发送
+    if payload.purpose in {"login", "reset_password"} and user is None:
+        return {"message": "验证码已发送，请查看邮箱"}
 
     verification_service = create_email_verification_service(settings)
     try:
@@ -116,7 +116,9 @@ def send_email_code(
 
 
 @router.post("/password/reset", response_model=SendEmailCodeResponse)
+@limiter.limit("5/minute")          # 每 IP 每分钟最多重置 5 次
 def reset_password(
+    request: Request,
     payload: ResetPasswordRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -134,7 +136,9 @@ def reset_password(
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("10/minute")         # 每 IP 每分钟最多尝试登录 10 次
 def login(
+    request: Request,
     payload: LoginRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -151,7 +155,9 @@ def login(
 
 
 @router.post("/email-code/login", response_model=TokenResponse)
+@limiter.limit("10/minute")         # 每 IP 每分钟最多尝试验证码登录 10 次
 def login_with_email_code(
+    request: Request,
     payload: EmailCodeLoginRequest,
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),

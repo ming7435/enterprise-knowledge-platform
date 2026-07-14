@@ -66,7 +66,7 @@ def build_advanced_overview(
 
     return {
         "workspace_id": workspace_id,
-        "document_count": _count(db, Document, workspace_id),
+        "document_count": _count_documents(db, workspace_id),
         "chunk_count": _count(db, DocumentChunk, workspace_id),
         "member_count": _count_active_members(db, workspace_id),
         "audit_log_count": _count(db, AuditLog, workspace_id),
@@ -83,7 +83,7 @@ def build_knowledge_graph(db: Session, *, workspace_id: str) -> dict:
     workspace = db.get(Workspace, workspace_id)
     documents = db.execute(
         select(Document)
-        .where(Document.workspace_id == workspace_id)
+        .where(Document.workspace_id == workspace_id, Document.deleted_at.is_(None))
         .order_by(Document.created_at.desc())
         .limit(20)
     ).scalars().all()
@@ -296,6 +296,17 @@ def _count(db: Session, model: type, workspace_id: str) -> int:
     return int(
         db.execute(
             select(func.count()).select_from(model).where(model.workspace_id == workspace_id)
+        ).scalar_one()
+    )
+
+
+def _count_documents(db: Session, workspace_id: str) -> int:
+    """统计未软删除的文档数量。"""
+    return int(
+        db.execute(
+            select(func.count())
+            .select_from(Document)
+            .where(Document.workspace_id == workspace_id, Document.deleted_at.is_(None))
         ).scalar_one()
     )
 

@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from fastapi import Header, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
@@ -23,6 +23,7 @@ def get_settings(request: Request):
 def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
 ) -> User:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
@@ -38,14 +39,17 @@ def get_current_user(
             detail="登录凭证无效",
         ) from None
 
-    db = request.app.state.SessionLocal()
-    try:
-        user = db.get(User, payload.get("sub"))
-        if user is None or user.status != "active":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="登录用户不存在",
-            )
-        return user
-    finally:
-        db.close()
+    # 复用 get_db 注入的同一个 Session，避免重复创建连接
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录凭证无效",
+        )
+    user = db.get(User, user_id)
+    if user is None or user.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="登录用户不存在",
+        )
+    return user

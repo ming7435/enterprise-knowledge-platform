@@ -116,7 +116,7 @@ def upsert_workspace_setting(
         value=setting_value,
         existing_value=existing_value,
     )
-    encrypted = "true" if setting_key in {PERSONAL_MODEL_KEY, ENTERPRISE_MODEL_API_KEY} else "false"
+    encrypted = setting_key in {PERSONAL_MODEL_KEY, ENTERPRISE_MODEL_API_KEY}
     if existing is None:
         existing = WorkspaceSetting(
             workspace_id=workspace.id,
@@ -291,9 +291,9 @@ def _setting_to_public(
         "setting_key": key,
         "setting_value": _sanitize_setting_value(key, value),
         "setting_type": setting.setting_type if setting else "json",
-        "encrypted": setting.encrypted
-        if setting
-        else ("true" if key in {PERSONAL_MODEL_KEY, ENTERPRISE_MODEL_API_KEY} else "false"),
+        "encrypted": "true"
+        if (setting.encrypted if setting else key in {PERSONAL_MODEL_KEY, ENTERPRISE_MODEL_API_KEY})
+        else "false",
     }
 
 
@@ -403,7 +403,7 @@ def _sync_personal_vector_index(db: Session, *, workspace: Workspace, value: dic
     vector_index.vector_type = "milvus"
     vector_index.embedding_model = str(value.get("embedding_model") or "bge-m3:567m")
     vector_index.top_k = _int_value(value.get("top_k"), default=5, min_value=1, max_value=20)
-    vector_index.score_threshold = str(value.get("score_threshold") or "0.35")
+    vector_index.score_threshold = str(_float_value(value.get("score_threshold"), default=0.35, min_value=0.0, max_value=1.0))
     vector_index.chunk_size = _int_value(value.get("chunk_size"), default=800, min_value=200, max_value=3000)
     vector_index.chunk_overlap = _int_value(
         value.get("chunk_overlap"), default=120, min_value=0, max_value=max(0, vector_index.chunk_size - 1)

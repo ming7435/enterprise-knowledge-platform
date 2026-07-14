@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -95,6 +95,11 @@ class WorkspaceMember(Base, TimestampMixin):
 
 class Document(Base, TimestampMixin):
     __tablename__ = "documents"
+    __table_args__ = (
+        # 高频复合查询索引
+        Index("ix_documents_ws_parse", "workspace_id", "parse_status"),
+        Index("ix_documents_ws_deleted", "workspace_id", "deleted_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     workspace_id: Mapped[str] = mapped_column(
@@ -108,6 +113,8 @@ class Document(Base, TimestampMixin):
     index_status: Mapped[str] = mapped_column(String(30), default="pending")
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     permission_scope: Mapped[str] = mapped_column(String(30), default="workspace")
+    # 软删除：标记删除时间而非物理删除，支持数据恢复和审计
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
 
 
 class DocumentChunk(Base, TimestampMixin):
@@ -195,11 +202,15 @@ class WorkspaceSetting(Base, TimestampMixin):
     setting_key: Mapped[str] = mapped_column(String(120))
     setting_value: Mapped[dict] = mapped_column(JSON, default=dict)
     setting_type: Mapped[str] = mapped_column(String(40), default="json")
-    encrypted: Mapped[str] = mapped_column(String(10), default="false")
+    encrypted: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class AuditLog(Base, TimestampMixin):
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        # 用于按工作区+时间范围查询审计日志
+        Index("ix_audit_logs_ws_created", "workspace_id", "created_at"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     workspace_id: Mapped[str | None] = mapped_column(String(36), index=True)
@@ -209,4 +220,5 @@ class AuditLog(Base, TimestampMixin):
     target_id: Mapped[str | None] = mapped_column(String(120))
     detail: Mapped[dict] = mapped_column(JSON, default=dict)
     ip_address: Mapped[str | None] = mapped_column(String(80))
-    user_agent: Mapped[str | None] = mapped_column(Text)
+    # 限制 user_agent 长度，防止滥用
+    user_agent: Mapped[str | None] = mapped_column(String(512))

@@ -298,7 +298,7 @@ def ask_workspace_question(
     use_knowledge_base: bool = False,
     llm_client: RagLlmClient | None = None,
 ) -> dict:
-    clean_question = question.strip()
+    clean_question = _sanitize_user_input(question.strip())
     runtime = get_workspace_rag_runtime(db, workspace_id=workspace_id, settings=settings)
     sources: list[ChunkSearchResult] = []
     if use_knowledge_base:
@@ -444,6 +444,24 @@ def _system_prompt(*, use_knowledge_base: bool = True) -> str:
         "回答要结构清晰、可执行，并尽量给出结论、要点和下一步建议。"
         "如果依据不足，请明确说明缺少哪些信息。"
     )
+
+
+def _sanitize_user_input(text: str, max_length: int = 2000) -> str:
+    """
+    对用户输入进行基本清理，防止 Prompt 注入。
+    - 移除控制字符（保留换行和制表符）
+    - 截断过长输入
+    - 转义 XML/Markdown 中可能破坏结构的字符组合
+    """
+    import re
+    # 移除控制字符，保留 \n \t \r
+    cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
+    # 防止 Prompt 边界注入：过滤可能混淆 system/user 角色标记的模式
+    cleaned = re.sub(r"(?i)(system\s*:|<\|.*?\|>|###\s*system|---\s*system)", "[filtered]", cleaned)
+    # 限制最大长度
+    if len(cleaned) > max_length:
+        cleaned = cleaned[:max_length] + "…（问题已截断）"
+    return cleaned.strip()
 
 
 def _user_prompt(

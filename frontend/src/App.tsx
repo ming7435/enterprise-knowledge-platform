@@ -32,6 +32,13 @@ export default function App() {
     void loadSession(token);
   }, [token]);
 
+  // 监听 api.ts 派发的 401 全局事件，统一处理 token 失效退出
+  useEffect(() => {
+    const onUnauthorized = () => handleLogout();
+    window.addEventListener('ekp:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('ekp:unauthorized', onUnauthorized);
+  }, []);
+
   async function loadSession(nextToken: string) {
     try {
       setLoading(true);

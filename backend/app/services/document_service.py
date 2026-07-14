@@ -5,7 +5,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
-from app.models.entities import Document, DocumentChunk, KnowledgeBase, User, VectorIndex
+from app.models.entities import Document, DocumentChunk, KnowledgeBase, User, VectorIndex, utc_now
 from app.services.document_processing_service import (
     DocumentProcessingError,
     UnsupportedAssetError,
@@ -149,6 +149,7 @@ def delete_workspace_document(
         select(Document).where(
             Document.id == document_id,
             Document.workspace_id == workspace_id,
+            Document.deleted_at.is_(None),
         )
     ).scalar_one_or_none()
     if document is None:
@@ -164,7 +165,8 @@ def delete_workspace_document(
     knowledge_base = _get_knowledge_base(db, workspace_id)
 
     db.execute(delete(DocumentChunk).where(DocumentChunk.document_id == document.id))
-    db.delete(document)
+    # 软删除：只标记删除时间，保留记录用于审计和恢复
+    document.deleted_at = utc_now()
 
     knowledge_base.document_count = max(0, knowledge_base.document_count - 1)
     knowledge_base.chunk_count = max(0, knowledge_base.chunk_count - removed_chunks)
@@ -245,6 +247,7 @@ def get_workspace_document_content(
         select(Document).where(
             Document.id == document_id,
             Document.workspace_id == workspace_id,
+            Document.deleted_at.is_(None),
         )
     ).scalar_one_or_none()
     if document is None:
@@ -274,7 +277,7 @@ def sync_knowledge_base_counts(db: Session, *, workspace_id: str) -> KnowledgeBa
     document_count = db.execute(
         select(func.count())
         .select_from(Document)
-        .where(Document.workspace_id == workspace_id)
+        .where(Document.workspace_id == workspace_id, Document.deleted_at.is_(None))
     ).scalar_one()
     chunk_count = db.execute(
         select(func.count())

@@ -31,16 +31,54 @@ const defaultApiBaseUrl =
 
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? defaultApiBaseUrl;
 
+// 请求超时时长（毫秒）
+const REQUEST_TIMEOUT_MS = 30_000;
+
+// 网络错误自动重试次数（指数退避）
+const MAX_RETRIES = 2;
+
 interface TokenResponse {
   access_token: string;
   token_type: string;
 }
 
+/** 将 HTTP 状态码转换为用户可读的错误消息。 */
+function httpStatusMessage(status: number): string {
+  switch (status) {
+    case 400: return '请求参数有误';
+    case 401: return '登录已过期，请重新登录';
+    case 403: return '权限不足';
+    case 404: return '资源不存在';
+    case 409: return '数据冲突，请刷新后重试';
+    case 422: return '请求格式错误';
+    case 429: return '操作过于频繁，请稍后再试';
+    case 500: return '服务器内部错误，请联系管理员';
+    case 502: return '服务暂时不可用，请稍后再试';
+    case 503: return '服务维护中，请稍后再试';
+    default: return `请求失败 (${status})`;
+  }
+}
+
+/** 当服务器返回 401 时派发全局退出事件，让应用层统一处理登出。 */
+function dispatchUnauthorized(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ekp:unauthorized'));
+  }
+}
+
+/**
+ * 核心请求函数：含超时控制、结构化错误处理。
+ * 对于幂等请求（GET）会在网络错误时自动重试最多 MAX_RETRIES 次。
+ */
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  token?: string | null
+  token?: string | null,
+  retryCount = 0
 ): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   const headers = new Headers(options.headers);
   if (!(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
@@ -48,14 +86,48 @@ async function request<T>(
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({ detail: '请求失败' }));
-    throw new Error(payload.detail ?? '请求失败');
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal
+    });
+  } catch (err) {
+    clearTimeout(timeoutId);
+    // AbortError 说明超时
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('请求超时，请检查网络连接');
+    }
+    // 网络错误：GET 请求可以幂等重试
+    const isGet = !options.method || options.method.toUpperCase() === 'GET';
+    if (isGet && retryCount < MAX_RETRIES) {
+      const delay = 500 * 2 ** retryCount; // 500ms, 1000ms 指数退避
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return request<T>(path, options, token, retryCount + 1);
+    }
+    throw new Error('网络连接失败，请检查网络后重试');
+  } finally {
+    clearTimeout(timeoutId);
   }
+
+  if (response.status === 401) {
+    dispatchUnauthorized();
+    throw new Error('登录已过期，请重新登录');
+  }
+
+  if (!response.ok) {
+    let detail: string;
+    try {
+      const payload = await response.json();
+      detail = payload.detail ?? httpStatusMessage(response.status);
+    } catch {
+      detail = httpStatusMessage(response.status);
+    }
+    throw new Error(detail);
+  }
+
   if (response.status === 204) {
     return undefined as T;
   }
