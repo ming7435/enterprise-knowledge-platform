@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.api.v1 import auth, modules, workspaces
 from app.core.config import Settings, get_settings
 from app.core.limiter import limiter
+from app.core.observability import install_metrics
 from app.db.session import create_session_factory
 from app.models.entities import Base
 
@@ -65,8 +66,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or get_settings()
     Path(app_settings.local_storage_root).mkdir(parents=True, exist_ok=True)
     session_factory, engine = create_session_factory(app_settings.database_url)
-    Base.metadata.create_all(bind=engine)
-    ensure_runtime_indexes(engine)
+    if app_settings.auto_create_schema:
+        Base.metadata.create_all(bind=engine)
+        ensure_runtime_indexes(engine)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -100,6 +102,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
+    install_metrics(app, enabled=app_settings.metrics_enabled)
 
     allowed_origins = [
         f"http://127.0.0.1:{app_settings.frontend_port}",
@@ -150,6 +153,7 @@ def _prune_audit_logs(session_factory, settings) -> None:
 def ensure_runtime_indexes(engine) -> None:
     with engine.begin() as connection:
         _ensure_documents_deleted_at_column(connection)
+        _ensure_rag_pipeline_columns(connection)
         duplicate_username = connection.execute(
             text(
                 """
@@ -197,6 +201,42 @@ def _ensure_documents_deleted_at_column(connection) -> None:
         connection.execute(
             text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE")
         )
+
+
+def _ensure_rag_pipeline_columns(connection) -> None:
+    document_columns = {
+        "processing_progress": "INTEGER NOT NULL DEFAULT 0",
+        "processing_stage": "VARCHAR(40) NOT NULL DEFAULT 'waiting'",
+        "processing_error": "TEXT",
+        "task_id": "VARCHAR(80)",
+        "content_hash": "VARCHAR(64)",
+        "version": "INTEGER NOT NULL DEFAULT 1",
+    }
+    chunk_columns = {
+        "section": "VARCHAR(255)",
+        "token_count": "INTEGER NOT NULL DEFAULT 0",
+        "content_hash": "VARCHAR(64)",
+    }
+    dialect = connection.dialect.name
+    if dialect == "sqlite":
+        existing_documents = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(documents)").fetchall()
+        }
+        existing_chunks = {
+            row[1] for row in connection.exec_driver_sql("PRAGMA table_info(document_chunks)").fetchall()
+        }
+        for name, definition in document_columns.items():
+            if name not in existing_documents:
+                connection.exec_driver_sql(f"ALTER TABLE documents ADD COLUMN {name} {definition}")
+        for name, definition in chunk_columns.items():
+            if name not in existing_chunks:
+                connection.exec_driver_sql(f"ALTER TABLE document_chunks ADD COLUMN {name} {definition}")
+        return
+    if dialect == "postgresql":
+        for name, definition in document_columns.items():
+            connection.execute(text(f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {name} {definition}"))
+        for name, definition in chunk_columns.items():
+            connection.execute(text(f"ALTER TABLE document_chunks ADD COLUMN IF NOT EXISTS {name} {definition}"))
 
 
 app = create_app()

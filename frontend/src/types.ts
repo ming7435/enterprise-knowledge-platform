@@ -24,6 +24,12 @@ export interface DocumentRecord {
   parse_status: string;
   index_status: string;
   chunk_count: number;
+  processing_progress: number;
+  processing_stage: string;
+  processing_error?: string | null;
+  task_id?: string | null;
+  content_hash?: string | null;
+  version: number;
   permission_scope: string;
   created_at: string;
 }
@@ -49,6 +55,9 @@ export interface KnowledgeChunk {
   chunk_index: number;
   content: string;
   score: number;
+  page_number?: number | null;
+  section?: string | null;
+  retrieval_method?: string;
 }
 
 export interface ChatSession {

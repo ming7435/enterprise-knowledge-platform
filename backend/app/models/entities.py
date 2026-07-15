@@ -112,6 +112,12 @@ class Document(Base, TimestampMixin):
     parse_status: Mapped[str] = mapped_column(String(30), default="pending")
     index_status: Mapped[str] = mapped_column(String(30), default="pending")
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    processing_progress: Mapped[int] = mapped_column(Integer, default=0)
+    processing_stage: Mapped[str] = mapped_column(String(40), default="waiting")
+    processing_error: Mapped[str | None] = mapped_column(Text)
+    task_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
     permission_scope: Mapped[str] = mapped_column(String(30), default="workspace")
     # 软删除：标记删除时间而非物理删除，支持数据恢复和审计
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
@@ -130,6 +136,9 @@ class DocumentChunk(Base, TimestampMixin):
     metadata_json: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     vector_id: Mapped[str | None] = mapped_column(String(120))
     page_number: Mapped[int | None] = mapped_column(Integer)
+    section: Mapped[str | None] = mapped_column(String(255))
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    content_hash: Mapped[str | None] = mapped_column(String(64), index=True)
 
 
 class KnowledgeBase(Base, TimestampMixin):

@@ -15,6 +15,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Square,
   Trash2,
   Upload,
   UserPlus,
@@ -119,6 +120,7 @@ interface EnterpriseWorkspacePanelProps {
   onUpload: () => void;
   onDeleteDocument: (document: DocumentRecord) => void;
   onDeleteDocuments: (documents: DocumentRecord[]) => void;
+  onReprocessDocument: (document: DocumentRecord) => void;
   onLoadDocumentContent: (document: DocumentRecord) => void | Promise<void>;
   onSaveWorkspaceSetting: (
     settingKey: string,
@@ -149,6 +151,7 @@ interface EnterpriseWorkspacePanelProps {
   onLoadGraphNeighbors: (nodeId: string) => Promise<KnowledgeGraphNode[]>;
   onUseKnowledgeBaseForChatChange: (value: boolean) => void;
   onAsk: () => void;
+  onStop: () => void;
   onPrepareQuestion: (question: string, documentIds?: string[]) => void;
   onDeleteChatTurn: (messageId: string) => void;
   onClearChatHistory: () => void;
@@ -247,6 +250,7 @@ export function EnterpriseWorkspacePanel({
   onUpload,
   onDeleteDocument,
   onDeleteDocuments,
+  onReprocessDocument,
   onLoadDocumentContent,
   onSaveWorkspaceSetting,
   onTestWorkspaceModelConnection,
@@ -271,6 +275,7 @@ export function EnterpriseWorkspacePanel({
   onLoadGraphNeighbors,
   onUseKnowledgeBaseForChatChange,
   onAsk,
+  onStop,
   onPrepareQuestion,
   onDeleteChatTurn,
   onClearChatHistory,
@@ -357,6 +362,7 @@ export function EnterpriseWorkspacePanel({
         onUpload={onUpload}
         onDeleteDocument={onDeleteDocument}
         onDeleteDocuments={onDeleteDocuments}
+        onReprocessDocument={onReprocessDocument}
         onRefresh={onRefreshModules}
         onKnowledgeDocumentFilterChange={onKnowledgeDocumentFilterChange}
       />
@@ -389,6 +395,7 @@ export function EnterpriseWorkspacePanel({
         loading={chatLoading}
         onQuestionChange={onQuestionChange}
         onAsk={onAsk}
+        onStop={onStop}
         onDeleteChatTurn={onDeleteChatTurn}
         onClearChatHistory={onClearChatHistory}
       />
@@ -724,6 +731,7 @@ function EnterpriseDocuments({
   onUpload,
   onDeleteDocument,
   onDeleteDocuments,
+  onReprocessDocument,
   onRefresh,
   onKnowledgeDocumentFilterChange
 }: EnterpriseSharedProps & {
@@ -737,6 +745,7 @@ function EnterpriseDocuments({
   onUpload: () => void;
   onDeleteDocument: (document: DocumentRecord) => void;
   onDeleteDocuments: (documents: DocumentRecord[]) => void;
+  onReprocessDocument: (document: DocumentRecord) => void;
   onRefresh: () => void;
   onKnowledgeDocumentFilterChange: (documentId: string) => void;
 }) {
@@ -955,7 +964,11 @@ function EnterpriseDocuments({
                       >
                         去问答
                       </button>
-                      <button type="button" disabled title="暂未开放">
+                      <button
+                        type="button"
+                        disabled={!profile.canManageDocs || ['queued', 'parsing'].includes(document.parse_status)}
+                        onClick={() => onReprocessDocument(document)}
+                      >
                         重新解析
                       </button>
                       <button
@@ -1286,6 +1299,7 @@ function EnterpriseRagChat({
   onUseKnowledgeBaseForChatChange,
   onQuestionChange,
   onAsk,
+  onStop,
   onDeleteChatTurn,
   onClearChatHistory
 }: EnterpriseSharedProps & {
@@ -1293,6 +1307,7 @@ function EnterpriseRagChat({
   loading: boolean;
   onQuestionChange: (value: string) => void;
   onAsk: () => void;
+  onStop: () => void;
   onDeleteChatTurn: (messageId: string) => void;
   onClearChatHistory: () => void;
 }) {
@@ -1421,6 +1436,12 @@ function EnterpriseRagChat({
                 <Bot size={18} aria-hidden="true" />
                 {loading ? '生成中' : '提问'}
               </button>
+              {loading && (
+                <button className="ghost-button" type="button" onClick={onStop}>
+                  <Square size={16} aria-hidden="true" />
+                  停止
+                </button>
+              )}
               <button className="ghost-button" type="button" onClick={() => onQuestionChange('')} disabled={loading || !question}>
                 清空
               </button>

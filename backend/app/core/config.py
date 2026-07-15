@@ -51,6 +51,24 @@ class Settings:
     ollama_base_url: str = field(default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
     ollama_model: str = field(default_factory=lambda: os.getenv("OLLAMA_MODEL", "qwen3:8b"))
     rag_top_k: int = field(default_factory=lambda: int(os.getenv("RAG_TOP_K", "5")))
+    retrieval_mode: str = field(default_factory=lambda: os.getenv("RETRIEVAL_MODE", "hybrid"))
+    retrieval_candidate_limit: int = field(
+        default_factory=lambda: int(os.getenv("RETRIEVAL_CANDIDATE_LIMIT", "30"))
+    )
+    retrieval_score_threshold: float = field(
+        default_factory=lambda: float(os.getenv("RETRIEVAL_SCORE_THRESHOLD", "0"))
+    )
+    vector_index_enabled: bool = field(default_factory=lambda: _env_bool("VECTOR_INDEX_ENABLED", "false"))
+    embedding_provider: str = field(default_factory=lambda: os.getenv("EMBEDDING_PROVIDER", "ollama"))
+    embedding_model: str = field(default_factory=lambda: os.getenv("EMBEDDING_MODEL", "bge-m3:567m"))
+    embedding_base_url: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_BASE_URL", os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434"))
+    )
+    embedding_api_key: str = field(default_factory=lambda: os.getenv("EMBEDDING_API_KEY", ""))
+    embedding_timeout_seconds: int = field(
+        default_factory=lambda: int(os.getenv("EMBEDDING_TIMEOUT_SECONDS", "60"))
+    )
+    rerank_enabled: bool = field(default_factory=lambda: _env_bool("RERANK_ENABLED", "true"))
     # 跨平台路径：环境变量优先，兜底使用项目根目录下的 models 子目录
     rerank_model_path: str = field(
         default_factory=lambda: os.getenv(
@@ -84,9 +102,26 @@ class Settings:
     mysql_port: int = field(default_factory=lambda: int(os.getenv("MYSQL_PORT", "3306")))
     redis_host: str = field(default_factory=lambda: os.getenv("REDIS_HOST", "localhost"))
     redis_port: int = field(default_factory=lambda: int(os.getenv("REDIS_PORT", "6379")))
+    redis_password: str = field(default_factory=lambda: os.getenv("REDIS_PASSWORD", ""))
+    celery_enabled: bool = field(default_factory=lambda: _env_bool("CELERY_ENABLED", "false"))
+    celery_broker_url: str = field(
+        default_factory=lambda: os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/0"))
+    celery_result_backend: str = field(
+        default_factory=lambda: os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1"))
     milvus_host: str = field(default_factory=lambda: os.getenv("MILVUS_HOST", "localhost"))
     milvus_grpc_port: int = field(default_factory=lambda: int(os.getenv("MILVUS_GRPC_PORT", "19530")))
     milvus_http_port: int = field(default_factory=lambda: int(os.getenv("MILVUS_HTTP_PORT", "9091")))
+    milvus_alias: str = field(default_factory=lambda: os.getenv("MILVUS_ALIAS", "default"))
+    milvus_collection: str = field(
+        default_factory=lambda: os.getenv("MILVUS_COLLECTION", "rag_document_chunks"))
+    milvus_uri: str = field(default_factory=lambda: os.getenv("MILVUS_URI", ""))
+    milvus_metric_type: str = field(
+        default_factory=lambda: os.getenv("MILVUS_METRIC_TYPE", "COSINE").upper())
+    vector_timeout_seconds: int = field(
+        default_factory=lambda: int(os.getenv("VECTOR_TIMEOUT_SECONDS", "10"))
+    )
+    auto_create_schema: bool = field(default_factory=lambda: _env_bool("AUTO_CREATE_SCHEMA", "true"))
+    metrics_enabled: bool = field(default_factory=lambda: _env_bool("METRICS_ENABLED", "true"))
     relational_db: str = field(default_factory=lambda: os.getenv("RELATIONAL_DB", "sqlite"))
     vector_store: str = field(default_factory=lambda: os.getenv("VECTOR_STORE", "milvus"))
     graph_db: str = field(default_factory=lambda: os.getenv("GRAPH_DB", "neo4j"))

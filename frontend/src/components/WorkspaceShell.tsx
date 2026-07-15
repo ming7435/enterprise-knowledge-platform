@@ -20,7 +20,7 @@ import {
   Users,
   Workflow
 } from 'lucide-react';
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 
 import { api } from '../api';
 import { getDisplayName, maskEmail, shortId } from '../display';
@@ -31,7 +31,6 @@ import type {
   AdvancedNotification,
   AdvancedOverview,
   AuditLogRecord,
-  ChatAskResponse,
   DocumentContent,
   DocumentRecord,
   KnowledgeGraph,
@@ -150,6 +149,7 @@ export function WorkspaceShell({
   const [selectedGraphDocumentIds, setSelectedGraphDocumentIds] = useState<string[]>([]);
   const [useKnowledgeBaseForChat, setUseKnowledgeBaseForChat] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
+  const chatAbortRef = useRef<AbortController | null>(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [deletingDocumentIds, setDeletingDocumentIds] = useState<string[]>([]);
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
@@ -243,11 +243,24 @@ export function WorkspaceShell({
     }
   }, [activePage, workspace.id]);
 
-  async function loadWorkspaceModules() {
+  const hasProcessingDocuments = documents.some((document) =>
+    ['queued', 'parsing'].includes(document.parse_status) ||
+    ['pending', 'indexing'].includes(document.index_status)
+  );
+
+  useEffect(() => {
+    if (!hasProcessingDocuments) return;
+    const timer = window.setInterval(() => {
+      void loadWorkspaceModules(true);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [hasProcessingDocuments, workspace.id]);
+
+  async function loadWorkspaceModules(silent = false) {
     try {
-      setModuleLoading(true);
+      if (!silent) setModuleLoading(true);
       setModuleError(null);
-      setModuleNotice(null);
+      if (!silent) setModuleNotice(null);
       const [nextDocuments, nextKnowledgeBase, nextChunks] = await Promise.all([
         api.documents(token, workspace.id),
         api.knowledgeBase(token, workspace.id),
@@ -259,7 +272,7 @@ export function WorkspaceShell({
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '模块数据加载失败');
     } finally {
-      setModuleLoading(false);
+      if (!silent) setModuleLoading(false);
     }
   }
 
@@ -380,14 +393,28 @@ export function WorkspaceShell({
       setSelectedFiles([]);
       setModuleNotice(
         workspace.type === 'personal'
-          ? `已上传 ${uploadedCount} 个文档，均已进入当前个人工作区。`
-          : `已上传 ${uploadedCount} 个企业文档，均已进入当前企业工作区。`
+          ? `已上传 ${uploadedCount} 个文档，后台正在解析并构建个人知识库。`
+          : `已上传 ${uploadedCount} 个企业文档，后台正在解析并构建企业知识库。`
       );
       await loadWorkspaceModules();
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '文档上传失败');
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleReprocessDocument(document: DocumentRecord) {
+    const confirmed = window.confirm(`确认重新解析“${document.filename}”吗？现有片段会在任务中重建。`);
+    if (!confirmed) return;
+    try {
+      setModuleError(null);
+      setModuleNotice(null);
+      await api.reprocessDocument(token, workspace.id, document.id);
+      setModuleNotice(`“${document.filename}”已进入重新解析队列。`);
+      await loadWorkspaceModules(true);
+    } catch (err) {
+      setModuleError(err instanceof Error ? err.message : '重新解析失败');
     }
   }
 
@@ -738,33 +765,66 @@ export function WorkspaceShell({
       useKnowledgeBase: useKnowledgeBaseForChat,
       createdAt: new Date().toISOString()
     };
+    const assistantId = `assistant-${Date.now()}`;
+    const abortController = new AbortController();
     try {
+      chatAbortRef.current = abortController;
       setChatLoading(true);
       setModuleError(null);
       setModuleNotice(null);
       setChatQuestion('');
-      setChatMessages((messages) => [...messages, userMessage]);
-      const response: ChatAskResponse = await api.askChat(
+      setChatMessages((messages) => [
+        ...messages,
+        userMessage,
+        {
+          id: assistantId,
+          role: 'assistant',
+          content: '',
+          sources: [],
+          modelName: activeChatModelName,
+          useKnowledgeBase: useKnowledgeBaseForChat,
+          createdAt: new Date().toISOString()
+        }
+      ]);
+      await api.askChatStream(
         token,
         workspace.id,
         question,
         chatSessionId,
         useKnowledgeBaseForChat ? selectedKnowledgeDocumentIds : [],
-        useKnowledgeBaseForChat
+        useKnowledgeBaseForChat,
+        (event, data) => {
+          if (event === 'meta') {
+            setChatSessionId(String(data.session_id || ''));
+            setChatMessages((messages) =>
+              messages.map((message) =>
+                message.id === assistantId
+                  ? { ...message, modelName: String(data.model_name || activeChatModelName) }
+                  : message
+              )
+            );
+          }
+          if (event === 'answer') {
+            const delta = String(data.delta || '');
+            setChatMessages((messages) =>
+              messages.map((message) =>
+                message.id === assistantId
+                  ? { ...message, content: `${message.content}${delta}` }
+                  : message
+              )
+            );
+          }
+          if (event === 'citations') {
+            const sources = Array.isArray(data.sources) ? data.sources as KnowledgeChunk[] : [];
+            setChatMessages((messages) =>
+              messages.map((message) =>
+                message.id === assistantId ? { ...message, sources } : message
+              )
+            );
+          }
+        },
+        abortController.signal
       );
-      setChatSessionId(response.session.id);
-      setChatMessages((messages) => [
-        ...messages,
-        {
-          id: `assistant-${Date.now()}`,
-          role: 'assistant',
-          content: response.answer,
-          sources: extractChatSources(response),
-          modelName: response.model_name,
-          useKnowledgeBase: response.use_knowledge_base,
-          createdAt: new Date().toISOString()
-        }
-      ]);
       setModuleNotice(
         useKnowledgeBaseForChat
           ? workspace.type === 'enterprise'
@@ -773,10 +833,19 @@ export function WorkspaceShell({
           : '普通大模型对话已完成，未使用知识库检索。'
       );
     } catch (err) {
-      setModuleError(err instanceof Error ? err.message : '问答失败');
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setModuleNotice('已停止本次回答。');
+      } else {
+        setModuleError(err instanceof Error ? err.message : '问答失败');
+      }
     } finally {
+      chatAbortRef.current = null;
       setChatLoading(false);
     }
+  }
+
+  function handleStopChat() {
+    chatAbortRef.current?.abort();
   }
 
   function handlePrepareQuestion(question: string, documentIds?: string[]) {
@@ -935,6 +1004,7 @@ export function WorkspaceShell({
             onUpload={handleUpload}
             onDeleteDocument={handleDeleteDocument}
             onDeleteDocuments={handleDeleteDocuments}
+            onReprocessDocument={handleReprocessDocument}
             onLoadDocumentContent={handleLoadDocumentContent}
             onSaveWorkspaceSetting={handleSaveWorkspaceSetting}
             onTestWorkspaceModelConnection={handleTestWorkspaceModelConnection}
@@ -956,6 +1026,7 @@ export function WorkspaceShell({
             onPrepareQuestion={handlePrepareQuestion}
             onDeleteChatTurn={handleDeleteChatTurn}
             onClearChatHistory={handleClearChatHistory}
+            onStop={handleStopChat}
           />
         ) : (
           <EnterpriseWorkspacePanel
@@ -1009,6 +1080,7 @@ export function WorkspaceShell({
             onUpload={handleUpload}
             onDeleteDocument={handleDeleteDocument}
             onDeleteDocuments={handleDeleteDocuments}
+            onReprocessDocument={handleReprocessDocument}
             onLoadDocumentContent={handleLoadDocumentContent}
             onSaveWorkspaceSetting={handleSaveWorkspaceSetting}
             onTestWorkspaceModelConnection={handleTestWorkspaceModelConnection}
@@ -1036,6 +1108,7 @@ export function WorkspaceShell({
             onPrepareQuestion={handlePrepareQuestion}
             onDeleteChatTurn={handleDeleteChatTurn}
             onClearChatHistory={handleClearChatHistory}
+            onStop={handleStopChat}
             onEmailChange={setMemberEmail}
             onDepartmentChange={setMemberDepartment}
             onRoleChange={setMemberRole}
@@ -1048,18 +1121,6 @@ export function WorkspaceShell({
       </section>
     </main>
   );
-}
-
-function extractChatSources(response: ChatAskResponse): KnowledgeChunk[] {
-  const candidates = [
-    response.sources,
-    response.references,
-    response.chunks,
-    response.citations,
-    response.source_chunks,
-    response.retrieved_chunks
-  ];
-  return candidates.find((items) => Array.isArray(items) && items.length > 0) ?? [];
 }
 
 function getActiveChatModelName(

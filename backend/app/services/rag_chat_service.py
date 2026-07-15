@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.observability import record_rag_result
 from app.models.entities import ChatMessage, ChatSession, User
 from app.services.document_service import ChunkSearchResult, search_workspace_chunks
 from app.services.workspace_service import write_audit_log
@@ -300,15 +301,23 @@ def ask_workspace_question(
 ) -> dict:
     clean_question = _sanitize_user_input(question.strip())
     runtime = get_workspace_rag_runtime(db, workspace_id=workspace_id, settings=settings)
+    retrieval_question = _build_retrieval_question(
+        db,
+        workspace_id=workspace_id,
+        user_id=user.id,
+        session_id=session_id,
+        question=clean_question,
+    )
     sources: list[ChunkSearchResult] = []
     if use_knowledge_base:
         safe_top_k = min(max(top_k or runtime.top_k or settings.rag_top_k, 1), 20)
         sources = search_workspace_chunks(
             db,
             workspace_id=workspace_id,
-            query=clean_question,
+            query=retrieval_question,
             limit=safe_top_k,
             document_ids=document_ids,
+            settings=settings,
         )
         if runtime.score_threshold > 0:
             sources = [source for source in sources if source.score >= runtime.score_threshold]
@@ -342,6 +351,15 @@ def ask_workspace_question(
         use_knowledge_base=use_knowledge_base,
     )
     source_payload = [_source_to_payload(source) for source in sources]
+    retrieval_methods = sorted({source.retrieval_method for source in sources})
+    retrieval_trace = {
+        "stage": "retrieval",
+        "status": "completed",
+        "source_count": len(sources),
+        "methods": retrieval_methods,
+        "selected_document_ids": document_ids or [],
+        "query_rewritten": retrieval_question != clean_question,
+    }
     assistant_message = ChatMessage(
         workspace_id=workspace_id,
         session_id=session.id,
@@ -349,7 +367,7 @@ def ask_workspace_question(
         role="assistant",
         content=generation.answer,
         sources=source_payload,
-        agent_trace=generation.agent_trace,
+        agent_trace=[retrieval_trace, *generation.agent_trace],
         model_name=generation.model_name,
     )
     db.add(assistant_message)
@@ -378,6 +396,13 @@ def ask_workspace_question(
             "use_knowledge_base": use_knowledge_base,
         },
     )
+    record_rag_result(
+        use_knowledge_base=use_knowledge_base,
+        model_name=generation.model_name,
+        source_count=len(source_payload),
+        question=clean_question,
+        answer=generation.answer,
+    )
     db.flush()
     return {
         "session": session,
@@ -386,6 +411,38 @@ def ask_workspace_question(
         "model_name": generation.model_name,
         "use_knowledge_base": use_knowledge_base,
     }
+
+
+def _build_retrieval_question(
+    db: Session,
+    *,
+    workspace_id: str,
+    user_id: str,
+    session_id: str | None,
+    question: str,
+    max_characters: int = 1600,
+) -> str:
+    if not session_id:
+        return question
+    history = db.execute(
+        select(ChatMessage)
+        .where(
+            ChatMessage.workspace_id == workspace_id,
+            ChatMessage.user_id == user_id,
+            ChatMessage.session_id == session_id,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(6)
+    ).scalars().all()
+    if not history:
+        return question
+    context = "\n".join(
+        f"{message.role}: {message.content}"
+        for message in reversed(history)
+        if message.content
+    )
+    combined = f"对话上下文：\n{context}\n当前问题：{question}"
+    return combined[-max_characters:]
 
 
 def _get_or_create_session(
@@ -428,6 +485,9 @@ def _source_to_payload(source: ChunkSearchResult) -> dict:
         "chunk_index": source.chunk_index,
         "content": source.content,
         "score": source.score,
+        "page_number": source.page_number,
+        "section": source.section,
+        "retrieval_method": source.retrieval_method,
     }
 
 

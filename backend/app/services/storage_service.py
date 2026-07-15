@@ -36,6 +36,9 @@ class DocumentStorage:
     def delete(self, file_path: str | None) -> None:
         raise NotImplementedError
 
+    def read(self, file_path: str) -> bytes:
+        raise NotImplementedError
+
 
 class LocalDocumentStorage(DocumentStorage):
     def __init__(self, root: str):
@@ -62,6 +65,12 @@ class LocalDocumentStorage(DocumentStorage):
         target_path = Path(file_path)
         if target_path.exists() and target_path.is_file():
             target_path.unlink()
+
+    def read(self, file_path: str) -> bytes:
+        target_path = Path(file_path)
+        if not target_path.exists() or not target_path.is_file():
+            raise FileNotFoundError(f"文档文件不存在：{file_path}")
+        return target_path.read_bytes()
 
 
 class MinioDocumentStorage(DocumentStorage):
@@ -128,6 +137,18 @@ class MinioDocumentStorage(DocumentStorage):
         if bucket and object_name:
             self.client.remove_object(bucket, object_name)
 
+    def read(self, file_path: str) -> bytes:
+        if not file_path.startswith("minio://"):
+            raise FileNotFoundError(f"MinIO 文件地址无效：{file_path}")
+        without_scheme = file_path.removeprefix("minio://")
+        bucket, _, object_name = without_scheme.partition("/")
+        response = self.client.get_object(bucket, object_name)
+        try:
+            return response.read()
+        finally:
+            response.close()
+            response.release_conn()
+
 
 def delete_document_file(settings: Settings, file_path: str | None) -> None:
     if not file_path:
@@ -139,6 +160,14 @@ def delete_document_file(settings: Settings, file_path: str | None) -> None:
             LocalDocumentStorage(settings.local_storage_root).delete(file_path)
     except Exception:
         return
+
+
+def read_document_file(settings: Settings, file_path: str | None) -> bytes:
+    if not file_path:
+        raise FileNotFoundError("文档没有可读取的存储地址")
+    if file_path.startswith("minio://"):
+        return MinioDocumentStorage(settings).read(file_path)
+    return LocalDocumentStorage(settings.local_storage_root).read(file_path)
 
 
 def create_document_storage(settings: Settings) -> DocumentStorage:

@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# 本地 BGE Cross-Encoder 重排。服务器内存不足时可不安装，系统会明确降级为 RRF 排序。
+sentence-transformers>=3.3,<4

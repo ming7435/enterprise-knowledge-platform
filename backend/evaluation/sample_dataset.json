@@ -1,0 +1,9 @@
+[
+  {
+    "question": "企业知识平台使用哪个向量库？",
+    "expected_chunk_ids": ["请替换为标注片段 ID"],
+    "retrieved_chunk_ids": [],
+    "citation_chunk_ids": [],
+    "latency_ms": 0
+  }
+]

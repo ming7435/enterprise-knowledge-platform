@@ -1,0 +1,17 @@
+[Unit]
+Description=Enterprise Knowledge Platform Celery Worker
+After=network.target redis-server.service
+Wants=redis-server.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/enterprise-knowledge-platform/RAG_系统
+EnvironmentFile=/opt/enterprise-knowledge-platform/RAG_系统/.env
+Environment=PYTHONPATH=backend
+ExecStart=/opt/enterprise-knowledge-platform/RAG_系统/backend/venv/bin/celery -A app.tasks.celery_app:celery_app worker --loglevel=INFO --concurrency=1
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

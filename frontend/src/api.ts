@@ -42,6 +42,8 @@ interface TokenResponse {
   token_type: string;
 }
 
+export type ChatStreamEventName = 'retrieval' | 'meta' | 'answer' | 'citations' | 'done' | 'error';
+
 /** 将 HTTP 状态码转换为用户可读的错误消息。 */
 function httpStatusMessage(status: number): string {
   switch (status) {
@@ -353,6 +355,65 @@ export const api = {
       token
     );
   },
+  async askChatStream(
+    token: string,
+    workspaceId: string,
+    question: string,
+    sessionId: string | null,
+    documentIds: string[],
+    useKnowledgeBase: boolean,
+    onEvent: (event: ChatStreamEventName, data: Record<string, unknown>) => void,
+    signal?: AbortSignal
+  ) {
+    const response = await fetch(
+      `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/chat/stream`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          question,
+          session_id: sessionId,
+          document_ids: documentIds.length ? documentIds : null,
+          use_knowledge_base: useKnowledgeBase
+        }),
+        signal
+      }
+    );
+    if (!response.ok) {
+      if (response.status === 401) dispatchUnauthorized();
+      let detail = httpStatusMessage(response.status);
+      try {
+        const payload = await response.json();
+        detail = String(payload.detail || detail);
+      } catch {
+        // 保留 HTTP 状态对应的中文错误。
+      }
+      throw new Error(detail);
+    }
+    if (!response.body) throw new Error('浏览器不支持流式回答');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop() ?? '';
+      for (const frame of frames) {
+        const eventLine = frame.split('\n').find((line) => line.startsWith('event:'));
+        const dataLine = frame.split('\n').find((line) => line.startsWith('data:'));
+        if (!eventLine || !dataLine) continue;
+        const event = eventLine.slice(6).trim() as ChatStreamEventName;
+        const data = JSON.parse(dataLine.slice(5).trim()) as Record<string, unknown>;
+        onEvent(event, data);
+      }
+      if (done) break;
+    }
+  },
   documentContent(token: string, workspaceId: string, documentId: string) {
     return request<DocumentContent>(
       `/api/v1/workspaces/${workspaceId}/documents/${documentId}/content`,
@@ -379,6 +440,13 @@ export const api = {
       {
         method: 'DELETE'
       },
+      token
+    );
+  },
+  reprocessDocument(token: string, workspaceId: string, documentId: string) {
+    return request<DocumentRecord>(
+      `/api/v1/workspaces/${workspaceId}/documents/${documentId}/reprocess`,
+      { method: 'POST' },
       token
     );
   },

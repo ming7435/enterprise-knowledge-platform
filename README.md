@@ -1,6 +1,19 @@
 # 企业知识平台
 
-企业知识平台是面向个人与企业工作区的 AI 知识管理系统。V1 版本先跑通账号入口、工作区选择、`workspace_id` 数据隔离和基础工作台页面，V2 版本开始接入文档上传、解析切片、知识库状态和本地检索预览，后续版本逐步接入向量库、RAG、权限审计、知识图谱和企业通知。
+企业知识平台是面向个人与企业工作区的 AI 知识管理系统。当前版本已形成账号、工作区隔离、异步文档处理、Milvus 向量检索、BM25 混合召回、BGE 重排、流式 RAG 问答、知识图谱、企业权限审计和可观测性闭环。
+
+## 企业级 RAG 主链路
+
+- 上传接口返回后台任务，文档状态包含等待、解析、入库、完成和失败进度；支持失败原因与重新解析。
+- 文档解析保留页码、章节、来源位置、Token 估算和内容哈希，同内容文档在工作区内去重。
+- Embedding 使用 Ollama 或 OpenAI 兼容 API，真实向量写入 Milvus，不生成伪向量。
+- 检索采用 BM25 与 Milvus 向量候选的 RRF 融合，并可使用本地 BGE Cross-Encoder 重排。
+- Milvus、Embedding 或重排服务不可用时明确降级到 BM25，不会返回伪造相似度。
+- 问答支持 SSE 事件、前端增量显示、停止、近期会话上下文和文件/页码级引用。
+- `/metrics` 暴露 Prometheus 指标；离线评估支持 Recall@K、MRR、上下文精度、引用准确率和延迟。
+- 所有数据查询、向量过滤、问答与引用继续强制限定当前 `workspace_id` 和所选知识库。
+
+仅在 `CELERY_ENABLED=false` 的单进程开发模式下，可配置 `MILVUS_URI=storage/milvus.db` 使用官方 Milvus Lite 持久化引擎。API 与 Celery 分进程运行或生产部署时应留空该配置，改用 `MILVUS_HOST` 与 `MILVUS_GRPC_PORT` 连接独立 Milvus。`MILVUS_METRIC_TYPE` 默认使用 `COSINE`；兼容仅支持内积索引的旧服务端时可设为 `IP`，系统会自动归一化向量以保持余弦相似度语义。
 
 ## V1 已包含
 
@@ -133,7 +146,7 @@ python -m pip install --no-user -r backend\requirements.txt
 
 n8n、MinIO、Neo4j、MySQL、Redis、Milvus、Attu、etcd 等本地知识库相关配置也统一放在 `.env`，仓库只提交 `.env.example` 占位模板。
 
-V2 文档上传优先使用 MinIO。`FILE_STORAGE=minio` 时，系统会尝试写入 `MINIO_BUCKET`；如果 MinIO 不可用，会快速回退到 `LOCAL_STORAGE_ROOT`。上传成功后，系统会立即解析文档并写入本地知识片段表；V3 已把知识片段接入 RAG 问答和来源追溯。
+V2 文档上传优先使用 MinIO。`FILE_STORAGE=minio` 时，系统会尝试写入 `MINIO_BUCKET`；如果 MinIO 不可用，会快速回退到 `LOCAL_STORAGE_ROOT`。上传成功后接口返回后台任务；`CELERY_ENABLED=true` 时由 Celery 处理，否则由 FastAPI 后台任务处理。
 
 ```text
 FILE_STORAGE=minio
@@ -160,12 +173,50 @@ RERANK_MODEL_PATH=L:\RAG_系统\models
 
 要生成正常的大模型综合回答，本地 `.env` 必须配置 `DEEPSEEK_API_KEY`，或确保 Ollama 服务和 `OLLAMA_MODEL` 可用。系统会把检索到的知识片段作为上下文交给大模型生成自然语言答案，来源片段只在前端“来源”区域展示，不再直接拼进回答正文。如果 DeepSeek 和 Ollama 都不可用，接口会明确提示模型未连通。
 
+## 数据库迁移
+
+首次启动或更新代码后执行：
+
+```powershell
+python -m alembic upgrade head
+```
+
+生产环境建议设置 `AUTO_CREATE_SCHEMA=false`，只使用 Alembic 管理结构。快速本地测试可保留 `AUTO_CREATE_SCHEMA=true`。
+
+## 一键容器部署
+
+完整编排包含 PostgreSQL、Redis、Milvus、MinIO、后端、Celery 和前端 Nginx。启动前必须通过环境变量设置 `JWT_SECRET_KEY`，并建议修改所有示例密码：
+
+```powershell
+$env:JWT_SECRET_KEY="请替换为强随机密钥"
+$env:POSTGRES_PASSWORD="请替换"
+$env:MINIO_SECRET_KEY="请替换"
+docker compose -f infra\docker-compose.yml up -d --build
+```
+
+按需启用知识图谱与监控：
+
+```powershell
+docker compose -f infra\docker-compose.yml --profile graph --profile monitoring up -d
+```
+
+前端地址为 `http://127.0.0.1:9521`，后端为 `http://127.0.0.1:9520`，Prometheus 为 `http://127.0.0.1:9090`，Grafana 为 `http://127.0.0.1:3001`。
+
+## RAG 离线评估
+
+先把标注片段写入评估数据集，再执行：
+
+```powershell
+$env:PYTHONPATH="backend"
+python -m app.evaluation.rag_evaluator backend\evaluation\sample_dataset.json --top-k 5
+```
+
 ## 启动 PostgreSQL
 
 当前推荐使用 PostgreSQL：
 
 ```powershell
-docker compose -f infra\docker-compose.yml up -d
+docker compose -f infra\docker-compose.yml up -d postgres
 ```
 
 启动后端前确认 `.env` 中的 `DATABASE_URL` 指向 PostgreSQL。系统启动时会自动建表；如果只是快速临时验证，也可以改用 SQLite。
@@ -174,6 +225,13 @@ docker compose -f infra\docker-compose.yml up -d
 
 ```powershell
 python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 9520
+```
+
+非 Docker 的 Linux 服务器可参考 `infra/systemd/rag-platform-celery.service` 注册 Celery worker；如果实际项目路径不同，需同步修改 `WorkingDirectory`、`EnvironmentFile` 和 `ExecStart`。启用后执行：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now rag-platform-celery.service
 ```
 
 健康检查：

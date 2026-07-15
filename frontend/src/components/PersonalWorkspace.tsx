@@ -17,6 +17,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Square,
   Trash2,
   Upload
 } from 'lucide-react';
@@ -96,6 +97,7 @@ interface PersonalWorkspacePanelProps {
   onUpload: () => void;
   onDeleteDocument: (document: DocumentRecord) => void;
   onDeleteDocuments: (documents: DocumentRecord[]) => void;
+  onReprocessDocument: (document: DocumentRecord) => void;
   onLoadDocumentContent: (document: DocumentRecord) => void | Promise<void>;
   onSaveWorkspaceSetting: (
     settingKey: string,
@@ -120,6 +122,7 @@ interface PersonalWorkspacePanelProps {
   onLoadGraphNeighbors: (nodeId: string) => Promise<KnowledgeGraphNode[]>;
   onUseKnowledgeBaseForChatChange: (value: boolean) => void;
   onAsk: () => void;
+  onStop: () => void;
   onPrepareQuestion: (question: string, documentIds?: string[]) => void;
   onDeleteChatTurn: (messageId: string) => void;
   onClearChatHistory: () => void;
@@ -171,6 +174,7 @@ export function PersonalWorkspacePanel({
   onUpload,
   onDeleteDocument,
   onDeleteDocuments,
+  onReprocessDocument,
   onLoadDocumentContent,
   onSaveWorkspaceSetting,
   onTestWorkspaceModelConnection,
@@ -189,6 +193,7 @@ export function PersonalWorkspacePanel({
   onLoadGraphNeighbors,
   onUseKnowledgeBaseForChatChange,
   onAsk,
+  onStop,
   onPrepareQuestion,
   onDeleteChatTurn,
   onClearChatHistory
@@ -243,6 +248,7 @@ export function PersonalWorkspacePanel({
         onUpload={onUpload}
         onDeleteDocument={onDeleteDocument}
         onDeleteDocuments={onDeleteDocuments}
+        onReprocessDocument={onReprocessDocument}
         onRefresh={onRefreshModules}
         onKnowledgeDocumentFilterChange={onKnowledgeDocumentFilterChange}
       />
@@ -274,6 +280,7 @@ export function PersonalWorkspacePanel({
         loading={chatLoading}
         onQuestionChange={onQuestionChange}
         onAsk={onAsk}
+        onStop={onStop}
         onDeleteChatTurn={onDeleteChatTurn}
         onClearChatHistory={onClearChatHistory}
       />
@@ -527,6 +534,7 @@ function PersonalDocuments({
   onUpload,
   onDeleteDocument,
   onDeleteDocuments,
+  onReprocessDocument,
   onRefresh,
   onKnowledgeDocumentFilterChange
 }: PersonalSharedProps & {
@@ -539,6 +547,7 @@ function PersonalDocuments({
   onUpload: () => void;
   onDeleteDocument: (document: DocumentRecord) => void;
   onDeleteDocuments: (documents: DocumentRecord[]) => void;
+  onReprocessDocument: (document: DocumentRecord) => void;
   onRefresh: () => void;
   onKnowledgeDocumentFilterChange: (documentId: string) => void;
 }) {
@@ -732,7 +741,13 @@ function PersonalDocuments({
                   >
                     去问答
                   </button>
-                  <button type="button" disabled title="暂未开放">重新解析</button>
+                  <button
+                    type="button"
+                    disabled={['queued', 'parsing'].includes(document.parse_status)}
+                    onClick={() => onReprocessDocument(document)}
+                  >
+                    重新解析
+                  </button>
                   <button
                     className="danger-link"
                     type="button"
@@ -1061,6 +1076,7 @@ function PersonalRagChat({
   onUseKnowledgeBaseForChatChange,
   onQuestionChange,
   onAsk,
+  onStop,
   onPrepareQuestion,
   onDeleteChatTurn,
   onClearChatHistory
@@ -1069,6 +1085,7 @@ function PersonalRagChat({
   loading: boolean;
   onQuestionChange: (value: string) => void;
   onAsk: () => void;
+  onStop: () => void;
   onDeleteChatTurn: (messageId: string) => void;
   onClearChatHistory: () => void;
 }) {
@@ -1200,6 +1217,12 @@ function PersonalRagChat({
                 <Bot size={18} aria-hidden="true" />
                 {loading ? (useKnowledgeBaseForChat ? '检索并生成中' : '生成中') : '提问'}
               </button>
+              {loading && (
+                <button className="ghost-button" type="button" onClick={onStop}>
+                  <Square size={16} aria-hidden="true" />
+                  停止
+                </button>
+              )}
               <button className="ghost-button" type="button" onClick={() => onQuestionChange('')}>
                 清空
               </button>

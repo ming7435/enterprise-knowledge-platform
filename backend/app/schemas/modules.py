@@ -20,6 +20,12 @@ class DocumentPublic(BaseModel):
     parse_status: str
     index_status: str
     chunk_count: int
+    processing_progress: int = 0
+    processing_stage: str = "waiting"
+    processing_error: str | None = None
+    task_id: str | None = None
+    content_hash: str | None = None
+    version: int = 1
     permission_scope: str
     created_at: datetime
 
@@ -47,6 +53,9 @@ class DocumentChunkPublic(BaseModel):
     chunk_index: int
     content: str
     score: float = 0
+    page_number: int | None = None
+    section: str | None = None
+    retrieval_method: str = "list"
 
 
 class KnowledgeSearchResult(BaseModel):
@@ -56,6 +65,9 @@ class KnowledgeSearchResult(BaseModel):
     chunk_index: int
     content: str
     score: float
+    page_number: int | None = None
+    section: str | None = None
+    retrieval_method: str = "bm25"
 
 
 class ChatAskRequest(BaseModel):
@@ -64,6 +76,13 @@ class ChatAskRequest(BaseModel):
     top_k: int | None = Field(default=None, ge=1, le=20)
     document_ids: list[str] | None = None
     use_knowledge_base: bool = False
+
+
+class AgentToolInvokeRequest(BaseModel):
+    query: str | None = Field(default=None, max_length=2000)
+    document_id: str | None = None
+    document_ids: list[str] | None = None
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 class ChatSessionCreate(BaseModel):
@@ -87,6 +106,9 @@ class ChatSourcePublic(BaseModel):
     chunk_index: int
     content: str
     score: float
+    page_number: int | None = None
+    section: str | None = None
+    retrieval_method: str | None = None
 
 
 class ChatAskResponse(BaseModel):

@@ -1,8 +1,10 @@
 from datetime import timedelta
+import json
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.responses import StreamingResponse
 
 from app.api.deps import get_current_user, get_db
 from app.models.entities import (
@@ -15,6 +17,7 @@ from app.models.entities import (
 from app.schemas.modules import (
     AdvancedNotificationPublic,
     AdvancedOverviewPublic,
+    AgentToolInvokeRequest,
     AuditLogPublic,
     ChatAskRequest,
     ChatAskResponse,
@@ -40,6 +43,7 @@ from app.services.advanced_service import (
     list_advanced_notifications,
     list_tool_statuses,
 )
+from app.services.agent_tool_service import list_agent_tools
 from app.services.neo4j_graph_service import (
     getNodeDetail,
     getRelatedNodes,
@@ -62,7 +66,11 @@ from app.services.document_service import (
     list_workspace_chunks,
     search_workspace_chunks,
     sync_knowledge_base_counts,
-    upload_document_content,
+)
+from app.services.document_task_service import (
+    create_queued_document,
+    enqueue_document_processing,
+    requeue_document,
 )
 from app.services.rag_chat_service import ask_workspace_question
 from app.services.workspace_settings_service import (
@@ -91,10 +99,11 @@ def list_documents(
 @router.post(
     "/documents/upload",
     response_model=DocumentPublic,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def upload_document(
     workspace_id: str,
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     permission_scope: str = Form(default="workspace"),
     db: Session = Depends(get_db),
@@ -108,7 +117,7 @@ async def upload_document(
         allowed_roles=WORKSPACE_WRITE_ROLES,
     )
     content = await file.read()
-    document = upload_document_content(
+    document = create_queued_document(
         db,
         settings=settings,
         user=current_user,
@@ -120,6 +129,61 @@ async def upload_document(
     )
     db.commit()
     db.refresh(document)
+    enqueue_document_processing(
+        settings=settings,
+        document=document,
+        background_tasks=background_tasks,
+    )
+    db.commit()
+    return document
+
+
+@router.post(
+    "/documents/{document_id}/reprocess",
+    response_model=DocumentPublic,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def reprocess_document(
+    workspace_id: str,
+    document_id: str,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_role(
+        db,
+        user=current_user,
+        workspace_id=workspace_id,
+        allowed_roles=WORKSPACE_WRITE_ROLES,
+    )
+    document = db.execute(
+        select(Document).where(
+            Document.id == document_id,
+            Document.workspace_id == workspace_id,
+            Document.deleted_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if document is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文档不存在")
+    requeue_document(db, document=document)
+    write_audit_log(
+        db,
+        action="document.reprocess_queued",
+        user_id=current_user.id,
+        workspace_id=workspace_id,
+        target_type="document",
+        target_id=document.id,
+        detail={"filename": document.filename, "task_id": document.task_id},
+    )
+    db.commit()
+    db.refresh(document)
+    enqueue_document_processing(
+        settings=settings,
+        document=document,
+        background_tasks=background_tasks,
+    )
+    db.commit()
     return document
 
 
@@ -225,6 +289,7 @@ def search_knowledge_base(
     document_ids: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
 ):
     require_workspace_member(db, user=current_user, workspace_id=workspace_id)
     safe_limit = min(max(limit, 1), 20)
@@ -234,6 +299,7 @@ def search_knowledge_base(
         query=query,
         limit=safe_limit,
         document_ids=_parse_document_ids(document_ids),
+        settings=settings,
     )
 
 
@@ -313,6 +379,120 @@ def ask_chat(
     db.commit()
     db.refresh(result["session"])
     return result
+
+
+@router.post("/chat/stream")
+def stream_chat(
+    workspace_id: str,
+    payload: ChatAskRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    try:
+        result = ask_workspace_question(
+            db,
+            settings=settings,
+            user=current_user,
+            workspace_id=workspace_id,
+            question=payload.question,
+            session_id=payload.session_id,
+            top_k=payload.top_k,
+            document_ids=payload.document_ids,
+            use_knowledge_base=payload.use_knowledge_base,
+        )
+        db.commit()
+        db.refresh(result["session"])
+    except Exception:
+        db.rollback()
+        raise
+
+    def events():
+        sources = result.get("sources", [])
+        yield _sse_event(
+            "retrieval",
+            {
+                "status": "completed",
+                "source_count": len(sources),
+                "methods": sorted(
+                    {source.get("retrieval_method") for source in sources if source.get("retrieval_method")}
+                ),
+            },
+        )
+        yield _sse_event(
+            "meta",
+            {
+                "session_id": result["session"].id,
+                "model_name": result["model_name"],
+                "use_knowledge_base": result["use_knowledge_base"],
+            },
+        )
+        answer = result.get("answer", "")
+        for offset in range(0, len(answer), 36):
+            yield _sse_event("answer", {"delta": answer[offset : offset + 36]})
+        yield _sse_event("citations", {"sources": sources})
+        yield _sse_event("done", {"status": "completed"})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _sse_event(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.get("/agent/tools")
+def get_agent_tools(
+    workspace_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    return {"workspace_id": workspace_id, "tools": list_agent_tools()}
+
+
+@router.post("/agent/tools/{tool_name}/invoke")
+def invoke_agent_tool(
+    workspace_id: str,
+    tool_name: str,
+    payload: AgentToolInvokeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    require_workspace_member(db, user=current_user, workspace_id=workspace_id)
+    if tool_name == "search_knowledge":
+        if not payload.query:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="query 不能为空")
+        return {
+            "workspace_id": workspace_id,
+            "tool": tool_name,
+            "result": search_workspace_chunks(
+                db,
+                workspace_id=workspace_id,
+                query=payload.query,
+                limit=payload.top_k,
+                document_ids=payload.document_ids,
+                settings=settings,
+            ),
+        }
+    if tool_name == "get_document_content":
+        if not payload.document_id:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="document_id 不能为空")
+        return {
+            "workspace_id": workspace_id,
+            "tool": tool_name,
+            "result": get_workspace_document_content(
+                db,
+                workspace_id=workspace_id,
+                document_id=payload.document_id,
+            ),
+        }
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent 工具不存在")
 
 
 @router.get("/advanced/overview", response_model=AdvancedOverviewPublic)
