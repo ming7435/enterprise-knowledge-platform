@@ -44,8 +44,8 @@ export default function KnowledgeGraph3D({
     const width = Math.max(container.clientWidth, 320);
     const height = Math.max(container.clientHeight || 810, 420);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#f8fbff');
-    scene.fog = new THREE.Fog('#f8fbff', 760, 1580);
+    scene.background = new THREE.Color('#070b10');
+    scene.fog = new THREE.Fog('#070b10', 780, 1680);
 
     const camera = new THREE.PerspectiveCamera(36, width / height, 1, 2600);
     camera.position.set(0, 48, nodes.length <= 3 ? 520 : 920);
@@ -76,18 +76,18 @@ export default function KnowledgeGraph3D({
     }
     renderer.domElement.addEventListener('wheel', handleGraphWheel, { passive: false });
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xdbeafe, 1.25));
-    scene.add(new THREE.AmbientLight(0xffffff, 0.62));
-    const pointLight = new THREE.PointLight(0xffffff, 1.8);
+    scene.add(new THREE.HemisphereLight(0xd8fff7, 0x081018, 1.08));
+    scene.add(new THREE.AmbientLight(0x9ab5c8, 0.42));
+    const pointLight = new THREE.PointLight(0x8dd8ff, 2.1);
     pointLight.position.set(260, 240, 380);
     scene.add(pointLight);
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.88);
     directionalLight.position.set(-180, 260, 320);
     scene.add(directionalLight);
-    const accentLight = new THREE.PointLight(0x14b8a6, 1.1);
+    const accentLight = new THREE.PointLight(0x26d6b5, 1.65);
     accentLight.position.set(-260, -120, 260);
     scene.add(accentLight);
-    const grid = new THREE.GridHelper(900, 22, '#99f6e4', '#d7eef0');
+    const grid = new THREE.GridHelper(900, 22, '#173a40', '#101b24');
     grid.position.y = -260;
     scene.add(grid);
 
@@ -154,7 +154,7 @@ export default function KnowledgeGraph3D({
         .add(controlPoint.clone().sub(target.position).normalize().multiplyScalar(targetSize + 7));
       const curve = new THREE.QuadraticBezierCurve3(start, controlPoint, end);
       const connected = selectedNodeId ? edge.source === selectedNodeId || edge.target === selectedNodeId : false;
-      const relationColor = new THREE.Color(connected ? getRelationColor(edge.label) : '#94a3b8');
+      const relationColor = new THREE.Color(connected ? getRelationColor(edge.label) : '#395266');
       const line = new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(curve.getPoints(28)),
         new THREE.LineBasicMaterial({
@@ -360,19 +360,19 @@ function makeTextSprite(
   canvas.height = 128;
   if (context) {
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = 'rgba(255,255,255,0.92)';
+    context.fillStyle = 'rgba(10,16,23,0.94)';
     roundRect(context, 26, 18, 460, 86, 22);
     context.fill();
     context.strokeStyle = color;
     context.lineWidth = 3;
     roundRect(context, 26, 18, 460, 86, 22);
     context.stroke();
-    context.fillStyle = '#0f172a';
+    context.fillStyle = '#eef7fa';
     context.font = '700 28px Arial, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillText(trimLabel(text, 18), canvas.width / 2, 56);
-    context.fillStyle = '#64748b';
+    context.fillStyle = '#8da4b3';
     context.font = '700 18px Arial, sans-serif';
     context.fillText(typeLabel, canvas.width / 2, 86);
   }
@@ -391,14 +391,14 @@ function makeRelationSprite(text: string, color: string) {
   canvas.height = 64;
   if (context) {
     context.clearRect(0, 0, canvas.width, canvas.height);
-    context.fillStyle = 'rgba(255,255,255,0.96)';
+    context.fillStyle = 'rgba(10,16,23,0.94)';
     roundRect(context, 8, 8, 240, 48, 16);
     context.fill();
     context.strokeStyle = color;
     context.lineWidth = 2;
     roundRect(context, 8, 8, 240, 48, 16);
     context.stroke();
-    context.fillStyle = '#334155';
+    context.fillStyle = '#c7d7df';
     context.font = '700 20px Arial, sans-serif';
     context.textAlign = 'center';
     context.textBaseline = 'middle';

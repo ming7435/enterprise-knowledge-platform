@@ -213,8 +213,8 @@ export function KnowledgeGraphExplorer({
   const [leftPanelVisible, setLeftPanelVisible] = useState(false);
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
   const [leftPanelWidth, setLeftPanelWidth] = useState(260);
-  const [rightPanelWidth, setRightPanelWidth] = useState(360);
-  const [resultRailVisible, setResultRailVisible] = useState(true);
+  const [rightPanelWidth, setRightPanelWidth] = useState(330);
+  const [resultRailVisible, setResultRailVisible] = useState(false);
   const [stageStatusVisible, setStageStatusVisible] = useState(false);
   const [remoteSearchNodes, setRemoteSearchNodes] = useState<KnowledgeGraphNode[] | null>(null);
   const [graphSearchLoading, setGraphSearchLoading] = useState(false);
@@ -487,9 +487,9 @@ export function KnowledgeGraphExplorer({
           <div className="graph-command-title">
             <Network size={22} aria-hidden="true" />
             <div>
-              <h3>知识图谱工作台</h3>
+              <h3>知识引擎</h3>
               <span>
-                {sourceLabel} · {graph?.stats?.node_count ?? nodes.length} 个节点 / {graph?.stats?.edge_count ?? edges.length} 条关系
+                {sourceLabel} · {graph?.stats?.node_count ?? nodes.length} 个实体 / {graph?.stats?.edge_count ?? edges.length} 条关系
                 {graph?.partial ? ' · 已截取部分数据' : ''}
               </span>
             </div>
@@ -499,7 +499,7 @@ export function KnowledgeGraphExplorer({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索实体名、别名、API、文件名或证据片段"
+              placeholder="搜索实体、关系、文件或证据片段"
             />
           </label>
           <div className="graph-command-actions">
