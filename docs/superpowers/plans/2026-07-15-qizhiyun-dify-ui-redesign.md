@@ -778,7 +778,7 @@ git commit -m "fix: 完成 Dify 式响应式与页面状态收口"
 ```powershell
 git status --short
 git diff origin/main...HEAD --name-only
-git diff origin/main...HEAD | rg -n 'sk-[A-Za-z0-9]|password\s*=|SMTP_PASSWORD|API_KEY=' 
+git diff origin/main...HEAD | rg -n 'sk-[A-Za-z0-9]|password\s*=|SMTP_PASSWORD|API_KEY='
 ```
 
 Expected: 仅出现计划内前端和中文文档；敏感信息扫描无命中；测试脚本不在变更列表。
