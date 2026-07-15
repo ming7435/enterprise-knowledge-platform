@@ -1,0 +1,65 @@
+:root {
+  --graph-canvas-bg: #ffffff;
+  --graph-canvas-grid: #eef2f6;
+  --graph-node-stroke: #ffffff;
+  --graph-edge: #b8c4d3;
+  --graph-edge-active: #155eef;
+  --graph-inspector-width: 360px;
+  --graph-toolbar-height: 44px;
+}
+
+.ui-graph-page {
+  display: grid;
+  min-width: 0;
+  min-height: calc(100vh - var(--header-height));
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--page-bg);
+}
+
+.ui-graph-canvas {
+  position: relative;
+  min-width: 0;
+  min-height: 520px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--graph-canvas-bg);
+  background-image:
+    linear-gradient(var(--graph-canvas-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--graph-canvas-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  box-shadow: var(--shadow-xs);
+  isolation: isolate;
+}
+
+.ui-graph-toolbar {
+  display: flex;
+  align-items: center;
+  min-height: var(--graph-toolbar-height);
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(8px);
+}
+
+.ui-graph-inspector {
+  width: var(--graph-inspector-width);
+  min-width: 280px;
+  max-width: min(48vw, 560px);
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+@media (max-width: 900px) {
+  .ui-graph-canvas {
+    min-height: 440px;
+  }
+
+  .ui-graph-inspector {
+    width: 100%;
+    max-width: none;
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+}
