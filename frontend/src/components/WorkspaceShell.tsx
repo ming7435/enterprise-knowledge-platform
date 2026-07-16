@@ -1,15 +1,11 @@
 import {
-  ArrowLeftRight,
   BarChart3,
   Bell,
   Bot,
   Database,
   FileText,
   Home,
-  LogOut,
   Network,
-  PanelLeftClose,
-  PanelLeftOpen,
   RefreshCw,
   Search,
   Settings,
@@ -26,6 +22,8 @@ import { api } from '../api';
 import { getDisplayName, maskEmail, shortId } from '../display';
 import { formatBeijingDateTime } from '../time';
 import { EnterpriseWorkspacePanel } from './EnterpriseWorkspace';
+import { AppHeader } from './layout/AppHeader';
+import { WorkspaceLayout } from './layout/WorkspaceLayout';
 import { PersonalWorkspacePanel } from './PersonalWorkspace';
 import type {
   AdvancedNotification,
@@ -77,33 +75,22 @@ type PageKey =
 
 const MEMBER_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const baseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
-  { key: 'dashboard', label: '首页', icon: Home },
-  { key: 'documents', label: '文档', icon: FileText },
-  { key: 'knowledge', label: '知识库', icon: Workflow },
-  { key: 'chat', label: '问答', icon: Bot },
-  { key: 'settings', label: '设置', icon: Settings },
-  { key: 'advanced', label: '高级', icon: BarChart3 }
-];
-
 const personalNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
-  { key: 'dashboard', label: '首页', icon: Home },
-  { key: 'documents', label: '文档管理', icon: FileText },
+  { key: 'dashboard', label: '工作台', icon: Home },
   { key: 'knowledge', label: '知识库', icon: Workflow },
   { key: 'chat', label: '智能问答', icon: Bot },
-  { key: 'settings', label: '个人设置', icon: Settings },
-  { key: 'advanced', label: '高级驾驶舱', icon: BarChart3 }
+  { key: 'advanced', label: '知识图谱', icon: BarChart3 },
+  { key: 'settings', label: '个人设置', icon: Settings }
 ];
 
 const enterpriseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
-  { key: 'dashboard', label: '首页', icon: Home },
-  { key: 'documents', label: '文档管理', icon: FileText },
-  { key: 'knowledge', label: '企业知识库', icon: Workflow },
-  { key: 'chat', label: '企业问答', icon: Bot },
+  { key: 'dashboard', label: '工作台', icon: Home },
+  { key: 'knowledge', label: '知识库', icon: Workflow },
+  { key: 'chat', label: '智能问答', icon: Bot },
+  { key: 'advanced', label: '知识图谱', icon: BarChart3 },
   { key: 'settings', label: '企业设置', icon: Settings },
-  { key: 'advanced', label: '高级驾驶舱', icon: BarChart3 },
-  { key: 'members', label: '成员管理', icon: Users },
-  { key: 'audit', label: '审计日志', icon: ShieldCheck }
+  { key: 'members', label: '成员与权限', icon: Users },
+  { key: 'audit', label: '审计', icon: ShieldCheck }
 ];
 
 const memberRoleOptions: Array<{ value: WorkspaceRole; label: string }> = [
@@ -161,8 +148,11 @@ export function WorkspaceShell({
   const [moduleError, setModuleError] = useState<string | null>(null);
 
   const navItems = workspace.type === 'enterprise' ? enterpriseNav : personalNav;
-  const currentNav = navItems.find((item) => item.key === activePage) ?? navItems[0];
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const currentNav = navItems.find((item) => item.key === activePage) ?? {
+    key: activePage,
+    label: activePage === 'documents' ? '文档管理' : navItems[0].label,
+    icon: activePage === 'documents' ? FileText : navItems[0].icon,
+  };
   const workspaceLabel = workspace.type === 'enterprise' ? '企业工作区' : '个人工作区';
   const latestDocuments = useMemo(() => documents.slice(0, 3), [documents]);
   const canManageMembers = workspace.role === 'owner' || workspace.role === 'admin';
@@ -889,80 +879,32 @@ export function WorkspaceShell({
   }
 
   return (
-    <main className={`app-shell ${workspace.type === 'enterprise' ? 'enterprise-shell' : 'personal-shell'} ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <aside className="sidebar">
-        <button
-          type="button"
-          className="sidebar-toggle"
-          onClick={() => setSidebarCollapsed((value) => !value)}
-          aria-label={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-        >
-          {sidebarCollapsed ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
-        </button>
-        <div className="brand-block">
-          <img className="brand-logo" src="/qizhiyun-logo.png" alt="企知云" />
+    <WorkspaceLayout
+      header={
+        <AppHeader
+          user={user}
+          workspace={workspace}
+          activePage={activePage}
+          items={navItems}
+          onNavigate={(key) => setActivePage(key as PageKey)}
+          onSwitchWorkspace={onBackToWorkspaces}
+          onLogout={onLogout}
+        />
+      }
+    >
+      <section className={`workbench workspace-workbench ${workspace.type === 'enterprise' ? 'enterprise-shell' : 'personal-shell'}`}>
+        <div className="workspace-context-bar">
           <div>
-            <strong>企业知识平台</strong>
-            <span>{workspace.type === 'enterprise' ? '企业空间' : '个人空间'}</span>
+            <span>{workspaceLabel}</span>
+            <strong>{workspace.type === 'personal' ? `${currentUserName} 的个人工作区` : workspace.name}</strong>
           </div>
+          <p>
+            {workspace.type === 'personal'
+              ? '当前空间：个人工作区，数据仅个人可见，不与企业工作区同步。'
+              : '当前空间：企业工作区，数据仅在当前企业成员权限范围内可见，不与个人工作区同步。'}
+          </p>
+          <small>{currentNav.label} · {workspace.type === 'enterprise' ? `角色 ${statusText(workspace.role || 'member')}` : '私有空间'}</small>
         </div>
-        <div className="sidebar-context">
-          <span>{workspace.type === 'enterprise' ? 'Enterprise RAG' : 'Personal RAG'}</span>
-          <strong>{workspace.name}</strong>
-          <small>{workspace.type === 'enterprise' ? `角色 ${workspace.role || 'member'}` : 'owner · 私有空间'}</small>
-        </div>
-
-        <nav className="sidebar-nav" aria-label="工作区导航">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.key}
-                className={item.key === activePage ? 'active' : ''}
-                onClick={() => setActivePage(item.key)}
-                title={item.label}
-              >
-                <Icon size={18} aria-hidden="true" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-        <div className="sidebar-footer">
-          <span>Workspace ID</span>
-          <strong>{workspace.id.slice(0, 8)}</strong>
-        </div>
-      </aside>
-
-      <section className="workbench">
-        <header className="workbench-header">
-          <div className="workbench-title-block">
-            <p className="eyebrow">{workspaceLabel}</p>
-            <h1>{workspace.type === 'personal' ? `${currentUserName} 的个人工作区` : workspace.name}</h1>
-            <span>
-              {workspace.type === 'personal'
-                ? `当前用户：${currentUserName}`
-                : `当前用户：${currentUserName}｜角色：${workspace.role || 'member'}`}
-            </span>
-            <p className="workspace-scope-note">
-              {workspace.type === 'personal'
-                ? '当前空间：个人工作区，数据仅个人可见，不与企业工作区同步。'
-                : '当前空间：企业工作区，数据仅在当前企业内部可见，不与个人工作区同步。'}
-            </p>
-          </div>
-          <div className="header-actions">
-            <span className="workspace-mode-chip">{workspace.type === 'enterprise' ? '企业版' : '个人版'}</span>
-            <button className="ghost-button" onClick={onBackToWorkspaces}>
-              <ArrowLeftRight size={18} aria-hidden="true" />
-              切换工作区
-            </button>
-            <button className="ghost-button" onClick={onLogout}>
-              <LogOut size={18} aria-hidden="true" />
-              退出登录
-            </button>
-          </div>
-        </header>
 
         {workspace.type === 'personal' ? (
           <PersonalWorkspacePanel
@@ -1119,7 +1061,7 @@ export function WorkspaceShell({
           />
         )}
       </section>
-    </main>
+    </WorkspaceLayout>
   );
 }
 

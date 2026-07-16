@@ -1,5 +1,7 @@
+from datetime import datetime
+
 from fastapi import HTTPException, status
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -45,7 +47,18 @@ def write_audit_log(
     )
 
 
-def workspace_to_public(workspace: Workspace, role: str | None = None) -> dict:
+def workspace_to_public(
+    workspace: Workspace,
+    role: str | None = None,
+    document_count: int = 0,
+    latest_document_updated_at: datetime | None = None,
+) -> dict:
+    updated_at = workspace.updated_at
+    if (
+        latest_document_updated_at is not None
+        and latest_document_updated_at > updated_at
+    ):
+        updated_at = latest_document_updated_at
     return {
         "id": workspace.id,
         "name": workspace.name,
@@ -53,6 +66,8 @@ def workspace_to_public(workspace: Workspace, role: str | None = None) -> dict:
         "description": workspace.description,
         "status": workspace.status,
         "role": role,
+        "updated_at": updated_at,
+        "document_count": document_count,
     }
 
 
@@ -110,8 +125,15 @@ def create_workspace_with_owner(
 
 
 def list_user_workspaces(db: Session, user: User) -> list[dict]:
+    document_count = _active_document_count_subquery()
+    latest_document_updated_at = _latest_document_updated_at_subquery()
     rows = db.execute(
-        select(Workspace, WorkspaceMember.role)
+        select(
+            Workspace,
+            WorkspaceMember.role,
+            document_count.label("document_count"),
+            latest_document_updated_at.label("latest_document_updated_at"),
+        )
         .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
         .where(
             WorkspaceMember.user_id == user.id,
@@ -120,7 +142,73 @@ def list_user_workspaces(db: Session, user: User) -> list[dict]:
         )
         .order_by(Workspace.type.desc(), Workspace.created_at.asc())
     ).all()
-    return [workspace_to_public(workspace, role) for workspace, role in rows]
+    return [
+        workspace_to_public(
+            workspace,
+            role,
+            count,
+            latest_document_updated_at,
+        )
+        for workspace, role, count, latest_document_updated_at in rows
+    ]
+
+
+def get_user_workspace_public(
+    db: Session,
+    *,
+    user: User,
+    workspace_id: str,
+) -> dict:
+    document_count = _active_document_count_subquery()
+    latest_document_updated_at = _latest_document_updated_at_subquery()
+    row = db.execute(
+        select(
+            Workspace,
+            WorkspaceMember.role,
+            document_count.label("document_count"),
+            latest_document_updated_at.label("latest_document_updated_at"),
+        )
+        .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+        .where(
+            Workspace.id == workspace_id,
+            Workspace.status == "active",
+            WorkspaceMember.user_id == user.id,
+            WorkspaceMember.status == "active",
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问该工作区",
+        )
+    workspace, role, count, latest_document_updated_at = row
+    return workspace_to_public(
+        workspace,
+        role,
+        count,
+        latest_document_updated_at,
+    )
+
+
+def _active_document_count_subquery():
+    return (
+        select(func.count(Document.id))
+        .where(
+            Document.workspace_id == Workspace.id,
+            Document.deleted_at.is_(None),
+        )
+        .correlate(Workspace)
+        .scalar_subquery()
+    )
+
+
+def _latest_document_updated_at_subquery():
+    return (
+        select(func.max(Document.updated_at))
+        .where(Document.workspace_id == Workspace.id)
+        .correlate(Workspace)
+        .scalar_subquery()
+    )
 
 
 def require_workspace_member(

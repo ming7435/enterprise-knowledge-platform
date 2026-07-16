@@ -12,6 +12,8 @@ class WorkspacePublic(BaseModel):
     description: str | None = None
     status: str
     role: str | None = None
+    updated_at: datetime
+    document_count: int
 
 
 class EnterpriseWorkspaceCreate(BaseModel):

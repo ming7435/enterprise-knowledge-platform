@@ -1,7 +1,19 @@
-import { Building2, LogOut, Plus, Trash2, UserRound } from 'lucide-react';
+import {
+  ArrowRight,
+  Building2,
+  LogOut,
+  MoreHorizontal,
+  Plus,
+  ShieldCheck,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
 
+import { formatBeijingDateTime } from '../time';
 import type { User, Workspace } from '../types';
+import { Button } from './ui/Button';
+import { ConfirmDialog, Modal } from './ui/Overlay';
 
 interface WorkspaceSelectionProps {
   user: User;
@@ -24,27 +36,32 @@ export function WorkspaceSelection({
   onCreatePersonal,
   onCreateEnterprise,
   onDeleteWorkspace,
-  onLogout
+  onLogout,
 }: WorkspaceSelectionProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
+  const [createEnterpriseOpen, setCreateEnterpriseOpen] = useState(false);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const personal = useMemo(
     () => workspaces.filter((workspace) => workspace.type === 'personal'),
-    [workspaces]
+    [workspaces],
   );
   const enterprises = useMemo(
     () => workspaces.filter((workspace) => workspace.type === 'enterprise'),
-    [workspaces]
+    [workspaces],
   );
-  const workspaceStats = useMemo(
-    () => [
-      { label: '个人空间', value: String(personal.length), hint: '仅个人可见' },
-      { label: '企业空间', value: String(enterprises.length), hint: '成员权限隔离' },
-      { label: '隔离策略', value: '100%', hint: '不跨空间同步' }
-    ],
-    [enterprises.length, personal.length]
-  );
+  const createBusy = createSubmitting || loading;
+
+  function closeCreateModal() {
+    if (createBusy) return;
+    setCreateEnterpriseOpen(false);
+    setLocalError(null);
+    setName('');
+    setDescription('');
+  }
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,159 +70,236 @@ export function WorkspaceSelection({
       return;
     }
     setLocalError(null);
-    await onCreateEnterprise(name.trim(), description.trim());
-    setName('');
-    setDescription('');
+    try {
+      setCreateSubmitting(true);
+      await onCreateEnterprise(name.trim(), description.trim());
+      setName('');
+      setDescription('');
+      setCreateEnterpriseOpen(false);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : '创建企业工作区失败');
+    } finally {
+      setCreateSubmitting(false);
+    }
   }
 
-  async function handleDelete(workspace: Workspace) {
-    const confirmed = window.confirm(
-      `确认删除“${workspace.name}”吗？工作区内文档、知识片段和会话记录会同步删除。`
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    try {
+      await onDeleteWorkspace(pendingDelete);
+      setPendingDelete(null);
+      setDeleteError(null);
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error && err.message.trim()
+          ? `删除工作区失败：${err.message}`
+          : '删除工作区失败，请稍后重试。',
+      );
+    }
+  }
+
+  function closeDeleteDialog() {
+    setPendingDelete(null);
+    setDeleteError(null);
+  }
+
+  function renderWorkspaceCard(workspace: Workspace) {
+    const personalWorkspace = workspace.type === 'personal';
+    const Icon = personalWorkspace ? UserRound : Building2;
+    const metadata = workspaceMetadata(workspace);
+    return (
+      <article className="workspace-choice-card" key={workspace.id}>
+        <div className={`workspace-choice-icon ${workspace.type}`}>
+          <Icon size={20} aria-hidden="true" />
+        </div>
+        <div className="workspace-choice-copy">
+          <div>
+            <span>{personalWorkspace ? '个人工作区' : '企业工作区'}</span>
+            <strong>{workspace.name}</strong>
+          </div>
+          <p>{workspace.description || (personalWorkspace ? '个人文档、知识库、问答和知识图谱。' : '企业知识、成员权限、问答与审计能力。')}</p>
+          <small>角色：{roleLabel(workspace.role)} · 状态：{workspaceStatusLabel(workspace.status)}</small>
+          <div className="workspace-choice-metadata">
+            <span>最近更新：{metadata.updatedAt}</span>
+            <span>文档数：{metadata.documentCount}</span>
+          </div>
+        </div>
+        <div className="workspace-choice-actions">
+          <Button variant="primary" size="sm" icon={ArrowRight} disabled={loading} onClick={() => onSelect(workspace)}>
+            进入工作区
+          </Button>
+          {workspace.role === 'owner' ? (
+            <details className="workspace-choice-menu">
+              <summary aria-label={`打开 ${workspace.name} 操作菜单`} title="更多操作">
+                <MoreHorizontal size={17} aria-hidden="true" />
+              </summary>
+              <div>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={(event) => {
+                    event.currentTarget.closest('details')?.removeAttribute('open');
+                    setDeleteError(null);
+                    setPendingDelete(workspace);
+                  }}
+                >
+                  <Trash2 size={15} aria-hidden="true" />
+                  删除工作区
+                </button>
+              </div>
+            </details>
+          ) : null}
+        </div>
+      </article>
     );
-    if (!confirmed) return;
-    await onDeleteWorkspace(workspace);
   }
 
   return (
-    <main className="workspace-page">
-      <header className="workspace-topbar">
-        <div>
-          <p className="eyebrow">工作区选择</p>
-          <h1>你好，{user.username}</h1>
-          <p className="workspace-scope-note">个人工作区和企业工作区数据完全隔离，不同步、不复制、不跨空间导入。</p>
-        </div>
-        <div className="workspace-topbar-actions">
-          <span className="workspace-user-chip">{user.email}</span>
-          <button className="ghost-button" onClick={onLogout}>
-            <LogOut size={18} aria-hidden="true" />
-            退出登录
-          </button>
+    <main className="workspace-selection-page">
+      <header className="workspace-selection-header">
+        <a className="workspace-selection-brand" href="/" aria-label="企知云企业知识平台">
+          <img src="/qizhiyun-logo.png" alt="" aria-hidden="true" />
+          <span><strong>企知云</strong><small>企业知识平台</small></span>
+        </a>
+        <div className="workspace-selection-user">
+          <span>{user.username.slice(0, 1).toUpperCase()}</span>
+          <div><strong>{user.username}</strong><small>{user.email}</small></div>
+          <Button variant="ghost" size="sm" icon={LogOut} onClick={onLogout}>退出</Button>
         </div>
       </header>
 
-      {(error || localError) && <p className="form-error">{error || localError}</p>}
-
-      <section className="workspace-command-center" aria-label="工作区资产总览">
-        <div>
-          <p className="eyebrow">Knowledge Workspace</p>
-          <h2>选择一个隔离空间开始工作</h2>
-          <span>每个空间都有独立文档、知识片段、向量索引、问答历史和图谱资产。</span>
-        </div>
-        <div className="workspace-stat-strip">
-          {workspaceStats.map((item) => (
-            <article key={item.label}>
-              <strong>{item.value}</strong>
-              <span>{item.label}</span>
-              <small>{item.hint}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="workspace-grid">
-        <div className="workspace-column">
-          <div className="workspace-column-head">
-            <h2>个人工作区</h2>
-            <button
-              className="ghost-button compact-create"
-              type="button"
-              disabled={loading}
-              onClick={() => void onCreatePersonal()}
-            >
-              <Plus size={16} aria-hidden="true" />
-              新建
-            </button>
+      <div className="workspace-selection-main">
+        <section className="workspace-selection-intro">
+          <div>
+            <p>工作区选择</p>
+            <h1>从一个独立空间开始工作</h1>
+            <span>选择个人或企业工作区。每个空间都拥有独立的文档、知识片段、向量索引、问答历史和图谱资产。</span>
           </div>
-          {personal.length === 0 && (
-            <p className="empty-state">还没有个人工作区，可以新建一个继续使用。</p>
-          )}
-          {personal.map((workspace) => (
-            <article className="workspace-card" key={workspace.id}>
-              <div className="card-icon personal">
-                <UserRound size={22} aria-hidden="true" />
-              </div>
-              <div>
-                <h3>{workspace.name}</h3>
-                <p>个人文档、知识库、问答和工具记录。</p>
-                <small>类型：个人工作区 · 角色：{workspace.role || 'owner'}</small>
-              </div>
-              <div className="workspace-card-actions">
-                <button onClick={() => onSelect(workspace)} disabled={loading}>
-                  进入
-                </button>
-                <button
-                  className="danger-action"
-                  type="button"
-                  title="删除工作区"
-                  aria-label={`删除 ${workspace.name}`}
-                  disabled={loading}
-                  onClick={() => void handleDelete(workspace)}
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+          <div className="workspace-isolation-note">
+            <ShieldCheck size={20} aria-hidden="true" />
+            <div>
+              <strong>空间数据严格隔离</strong>
+              <span>个人与企业数据不跨空间同步、复制、导入或共享。</span>
+            </div>
+          </div>
+        </section>
 
-        <div className="workspace-column">
-          <h2>企业工作区</h2>
-          {enterprises.length === 0 && (
-            <p className="empty-state">还没有加入企业工作区。</p>
-          )}
-          {enterprises.map((workspace) => (
-            <article className="workspace-card" key={workspace.id}>
-              <div className="card-icon enterprise">
-                <Building2 size={22} aria-hidden="true" />
-              </div>
-              <div>
-                <h3>{workspace.name}</h3>
-                <p>{workspace.description || '企业文档、权限、审计和知识库。'}</p>
-                <small>类型：企业工作区 · 角色：{workspace.role || 'member'}</small>
-              </div>
-              <div className="workspace-card-actions">
-                <button onClick={() => onSelect(workspace)} disabled={loading}>
-                  进入
-                </button>
-                <button
-                  className="danger-action"
-                  type="button"
-                  title="删除工作区"
-                  aria-label={`删除 ${workspace.name}`}
-                  disabled={loading}
-                  onClick={() => void handleDelete(workspace)}
-                >
-                  <Trash2 size={16} aria-hidden="true" />
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+        {error ? <p className="form-error workspace-selection-error" role="alert">{error}</p> : null}
 
-        <form className="create-enterprise" onSubmit={handleCreate}>
-          <h2>新建企业工作区</h2>
+        <div className="workspace-selection-grid">
+          <section className="workspace-list-panel">
+            <div className="workspace-list-heading">
+              <div><h2>你的工作区</h2><span>共 {workspaces.length} 个可访问空间</span></div>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                disabled={loading}
+                onClick={() => {
+                  setLocalError(null);
+                  setCreateEnterpriseOpen(true);
+                }}
+              >
+                新建企业工作区
+              </Button>
+            </div>
+
+            <div className="workspace-list-group">
+              <div className="workspace-group-label"><UserRound size={16} aria-hidden="true" /><span>个人工作区</span><small>{personal.length}</small></div>
+              {personal.length > 0 ? personal.map(renderWorkspaceCard) : (
+                <div className="workspace-empty-card">
+                  <strong>还没有个人工作区</strong>
+                  <span>创建后可管理仅自己可见的文档、问答和知识图谱。</span>
+                  <Button variant="primary" size="sm" icon={Plus} disabled={loading} onClick={() => void onCreatePersonal()}>
+                    创建个人空间
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            <div className="workspace-list-group">
+              <div className="workspace-group-label"><Building2 size={16} aria-hidden="true" /><span>企业工作区</span><small>{enterprises.length}</small></div>
+              {enterprises.length > 0 ? enterprises.map(renderWorkspaceCard) : (
+                <div className="workspace-empty-card compact"><strong>还没有企业工作区</strong><span>点击“新建企业工作区”创建独立企业空间。</span></div>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <Modal
+        open={createEnterpriseOpen}
+        title="新建企业工作区"
+        description="为企业知识、成员权限和审计记录创建独立空间。"
+        closeDisabled={createBusy}
+        onClose={closeCreateModal}
+        footer={
+          <>
+            <Button disabled={createBusy} onClick={closeCreateModal}>取消</Button>
+            <Button
+              variant="primary"
+              type="submit"
+              form="create-enterprise-workspace-form"
+              icon={Plus}
+              loading={createBusy}
+            >
+              创建并进入
+            </Button>
+          </>
+        }
+      >
+        <form id="create-enterprise-workspace-form" className="create-workspace-modal-form" onSubmit={handleCreate}>
           <label>
             <span>企业名称</span>
-            <input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="例如：明途科技"
-            />
+            <input data-autofocus value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：明途科技" />
           </label>
           <label>
-            <span>说明</span>
-            <textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="企业知识库、权限、审计等能力从这里开始。"
-            />
+            <span>空间说明</span>
+            <textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="说明这个企业知识空间的用途" />
           </label>
-          <button className="primary-action" type="submit" disabled={loading}>
-            <Plus size={18} aria-hidden="true" />
-            创建企业工作区
-          </button>
+          {(localError || error) ? <p className="form-error" role="alert">{localError || error}</p> : null}
+          <p className="create-workspace-tip">创建者将成为企业工作区所有者，可继续配置成员权限。</p>
         </form>
-      </section>
+      </Modal>
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        title="删除工作区"
+        description={`确认删除“${pendingDelete?.name ?? ''}”吗？工作区内文档、知识片段和会话记录会一并删除，此操作不可撤销。`}
+        error={deleteError ?? undefined}
+        confirmLabel="确认删除"
+        danger
+        busy={loading}
+        onConfirm={() => void confirmDelete()}
+        onClose={closeDeleteDialog}
+      />
     </main>
   );
+}
+
+function roleLabel(role?: string | null) {
+  const labels: Record<string, string> = {
+    owner: '所有者',
+    admin: '管理员',
+    member: '成员',
+    viewer: '只读',
+  };
+  return labels[role || ''] || '成员';
+}
+
+function workspaceStatusLabel(status?: string | null) {
+  const labels: Record<string, string> = {
+    active: '可用',
+    ready: '可用',
+    disabled: '已停用',
+    pending: '准备中',
+  };
+  return labels[status || ''] || '可用';
+}
+
+function workspaceMetadata(workspace: Workspace) {
+  return {
+    updatedAt: formatBeijingDateTime(workspace.updated_at),
+    documentCount: String(workspace.document_count),
+  };
 }

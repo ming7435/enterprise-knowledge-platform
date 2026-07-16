@@ -1,7 +1,6 @@
 import {
   Eye,
   EyeOff,
-  KeyRound,
   Lock,
   LogIn,
   Mail,
@@ -18,6 +17,9 @@ import type {
   RegisterInput,
   ResetPasswordInput
 } from '../types';
+import { Button } from './ui/Button';
+import { SegmentedControl } from './ui/FormControls';
+import { IconButton } from './ui/IconButton';
 
 type AuthMethod = 'password' | 'emailCode' | 'forgotPassword';
 
@@ -183,135 +185,97 @@ export function AuthForms({
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-panel" aria-label="账号入口">
-        <div className="auth-copy">
-          <img className="auth-logo" src="/qizhiyun-logo.png" alt="企知云" />
-          <p className="eyebrow">企业知识平台</p>
-          <h1>统一账号入口</h1>
-          <p>登录后进入工作区选择页，个人空间与企业空间从第一步开始隔离。</p>
-          <div className="auth-proof-grid" aria-label="平台能力概览">
-            <article>
-              <strong>Workspace</strong>
-              <span>个人 / 企业双空间隔离</span>
-            </article>
-            <article>
-              <strong>RAG</strong>
-              <span>文档入库、检索、引用追溯</span>
-            </article>
-            <article>
-              <strong>Graph</strong>
-              <span>Neo4j 文件实体关系图谱</span>
-            </article>
+    <main className="auth-page-dify">
+      <a className="auth-page-brand" href="/" aria-label="企知云企业知识平台">
+        <img src="/qizhiyun-logo.png" alt="" aria-hidden="true" />
+        <span><strong>企知云</strong><small>企业知识平台</small></span>
+      </a>
+
+      <section className="auth-card" data-ui="auth-card" aria-label="账号入口">
+        <header className="auth-brand">
+          <div className="auth-brand-mark" aria-hidden="true">知</div>
+          <div>
+            <p>{isRegister ? '创建你的知识空间' : isResetPassword ? '恢复账号访问' : '欢迎回到企知云'}</p>
+            <h1>{isRegister ? '注册账号' : isResetPassword ? '重置密码' : '登录企知云'}</h1>
           </div>
-        </div>
+          <span>
+            {isRegister
+              ? '使用邮箱验证码完成注册，随后进入工作区选择页。'
+              : isResetPassword
+                ? '验证邮箱身份后设置新密码。'
+                : '登录后选择个人或企业工作区，所有数据保持严格隔离。'}
+          </span>
+        </header>
 
-        <form className="auth-form" onSubmit={handleSubmit}>
-          <div className="auth-form-head">
-            <p className="eyebrow">{isRegister ? '创建账号' : isResetPassword ? '安全重置' : '安全登录'}</p>
-            <h2>{isRegister ? '注册企知云账号' : isResetPassword ? '找回访问权限' : '进入知识工作台'}</h2>
-            <span>
-              {isRegister
-                ? '使用邮箱验证码完成注册，后续进入工作区选择页。'
-                : isResetPassword
-                  ? '通过邮箱验证码确认身份并设置新密码。'
-                  : '支持密码和邮箱验证码两种登录方式。'}
-            </span>
-          </div>
+        <SegmentedControl<'login' | 'register'>
+          value={mode}
+          options={[{ value: 'login', label: '登录' }, { value: 'register', label: '注册' }]}
+          onChange={changeMode}
+          ariaLabel="登录或注册"
+          disabled={loading}
+          className="auth-mode-segment"
+        />
 
-          <div className="auth-tabs" role="tablist" aria-label="认证方式">
-            <button
-              type="button"
-              aria-label="切换到登录"
-              className={mode === 'login' ? 'active' : ''}
-              onClick={() => changeMode('login')}
-            >
-              登录
-            </button>
-            <button
-              type="button"
-              aria-label="切换到注册"
-              className={mode === 'register' ? 'active' : ''}
-              onClick={() => changeMode('register')}
-            >
-              注册
-            </button>
-          </div>
+        <form className="auth-form-fields" onSubmit={handleSubmit}>
+          {!isRegister && !isResetPassword ? (
+            <SegmentedControl<AuthMethod>
+              value={authMethod}
+              options={[{ value: 'password', label: '密码登录' }, { value: 'emailCode', label: '验证码登录' }]}
+              onChange={(method) => {
+                setFormSuccess(null);
+                setAuthMethod(method);
+              }}
+              ariaLabel="登录方式"
+              disabled={loading}
+              className="auth-method-segment"
+            />
+          ) : null}
 
-          {!isRegister && !isResetPassword && (
-            <div className="auth-methods" aria-label="登录方式">
-              <button
-                type="button"
-                className={authMethod === 'password' ? 'active' : ''}
-                onClick={() => {
-                  setFormSuccess(null);
-                  setAuthMethod('password');
-                }}
-              >
-                <Lock size={16} aria-hidden="true" />
-                密码
-              </button>
-              <button
-                type="button"
-                className={authMethod === 'emailCode' ? 'active' : ''}
-                onClick={() => {
-                  setFormSuccess(null);
-                  setAuthMethod('emailCode');
-                }}
-              >
-                <KeyRound size={16} aria-hidden="true" />
-                验证码
-              </button>
-            </div>
-          )}
-
-          {isResetPassword && (
-            <button
-              className="link-action mode-return"
-              type="button"
-              onClick={() => setAuthMethod('password')}
-            >
+          {isResetPassword ? (
+            <button className="link-action mode-return" type="button" onClick={() => setAuthMethod('password')}>
               返回登录
             </button>
-          )}
+          ) : null}
 
-          {isRegister && (
-            <label>
+          {isRegister ? (
+            <label className="auth-field">
               <span>用户名</span>
               <div className="input-row">
-                <UserPlus size={18} aria-hidden="true" />
+                <UserPlus size={17} aria-hidden="true" />
                 <input
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
-                  placeholder="例如：Owner"
+                  placeholder="请输入 2-20 位用户名"
                   autoComplete="username"
+                  aria-invalid={Boolean(errors.username)}
                 />
               </div>
-              {errors.username && <small>{errors.username}</small>}
+              {errors.username ? <small>{errors.username}</small> : null}
             </label>
-          )}
+          ) : null}
 
-          <label>
+          <label className="auth-field">
             <span>邮箱</span>
             <div className="input-row">
-              <Mail size={18} aria-hidden="true" />
+              <Mail size={17} aria-hidden="true" />
               <input
                 value={email}
                 type="email"
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="owner@example.com"
+                placeholder="name@example.com"
                 autoComplete="email"
+                aria-invalid={Boolean(errors.email)}
               />
             </div>
-            {errors.email && <small>{errors.email}</small>}
+            {errors.email ? <small>{errors.email}</small> : null}
           </label>
 
-          {needsVerificationCode && (
-            <label>
+          {needsVerificationCode ? (
+            <label className="auth-field">
               <span>邮箱验证码</span>
               <div className="code-row">
                 <div className="input-row">
-                  <ShieldCheck size={18} aria-hidden="true" />
+                  <ShieldCheck size={17} aria-hidden="true" />
                   <input
                     value={verificationCode}
                     inputMode="numeric"
@@ -319,52 +283,48 @@ export function AuthForms({
                     onChange={(event) => setVerificationCode(event.target.value)}
                     placeholder="6 位数字"
                     autoComplete="one-time-code"
+                    aria-invalid={Boolean(errors.verification_code)}
                   />
                 </div>
-                <button
-                  type="button"
-                  className="secondary-action"
+                <Button
+                  size="sm"
+                  icon={Send}
                   disabled={loading || codeSending || cooldown > 0}
+                  loading={codeSending}
                   onClick={handleSendCode}
                 >
-                  <Send size={16} aria-hidden="true" />
-                  {cooldown > 0 ? `${cooldown}s` : '发送'}
-                </button>
+                  {cooldown > 0 ? `${cooldown}s` : '发送验证码'}
+                </Button>
               </div>
-              {errors.verification_code && <small>{errors.verification_code}</small>}
-              {errors.send_code && <small>{errors.send_code}</small>}
-              {codeMessage && <small className="form-success">{codeMessage}</small>}
+              {errors.verification_code ? <small>{errors.verification_code}</small> : null}
+              {errors.send_code ? <small>{errors.send_code}</small> : null}
+              {codeMessage ? <small className="form-success">{codeMessage}</small> : null}
             </label>
-          )}
+          ) : null}
 
-          {(needsPassword || isResetPassword) && (
-            <label>
+          {needsPassword || isResetPassword ? (
+            <label className="auth-field">
               <span>{passwordLabel}</span>
               <div className="input-row">
-                <Lock size={18} aria-hidden="true" />
+                <Lock size={17} aria-hidden="true" />
                 <input
                   value={password}
                   type={showPassword ? 'text' : 'password'}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="至少 8 位"
                   autoComplete={isRegister || isResetPassword ? 'new-password' : 'current-password'}
+                  aria-invalid={Boolean(errors.password)}
                 />
-                <button
-                  type="button"
+                <IconButton
+                  icon={showPassword ? EyeOff : Eye}
+                  label={showPassword ? '隐藏密码' : '显示密码'}
+                  size="sm"
                   className="password-toggle"
-                  aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                  title={showPassword ? '隐藏密码' : '显示密码'}
                   onClick={() => setShowPassword((current) => !current)}
-                >
-                  {showPassword ? (
-                    <EyeOff size={18} aria-hidden="true" />
-                  ) : (
-                    <Eye size={18} aria-hidden="true" />
-                  )}
-                </button>
+                />
               </div>
-              {errors.password && <small>{errors.password}</small>}
-              {!isRegister && authMethod === 'password' && (
+              {errors.password ? <small>{errors.password}</small> : null}
+              {!isRegister && authMethod === 'password' ? (
                 <button
                   className="link-action"
                   type="button"
@@ -375,24 +335,27 @@ export function AuthForms({
                 >
                   忘记密码？
                 </button>
-              )}
+              ) : null}
             </label>
-          )}
+          ) : null}
 
-          {error && <p className="form-error">{error}</p>}
-          {formSuccess && <p className="form-success">{formSuccess}</p>}
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          {formSuccess ? <p className="form-success" role="status">{formSuccess}</p> : null}
 
-          <button className="primary-action" type="submit" disabled={loading}>
-            <LogIn size={18} aria-hidden="true" />
+          <Button className="auth-submit" variant="primary" type="submit" icon={LogIn} loading={loading}>
             {isRegister
               ? '注册并进入'
               : isResetPassword
                 ? '重置密码'
-              : authMethod === 'emailCode'
-                ? '验证码登录'
-                : '登录'}
-          </button>
+                : authMethod === 'emailCode'
+                  ? '验证码登录'
+                  : '登录'}
+          </Button>
         </form>
+
+        <footer className="auth-card-footer">
+          个人工作区与企业工作区互不复制、导入或同步数据
+        </footer>
       </section>
     </main>
   );

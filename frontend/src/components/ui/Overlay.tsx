@@ -41,8 +41,9 @@ function getFocusableElements(container: HTMLElement) {
 }
 
 function focusFirst(entry: OverlayStackEntry) {
-  const firstFocusable = getFocusableElements(entry.dialog)[0];
-  (firstFocusable ?? entry.dialog).focus({ preventScroll: true });
+  const focusable = getFocusableElements(entry.dialog);
+  const explicitAutofocus = focusable.find((element) => element.hasAttribute('data-autofocus'));
+  (explicitAutofocus ?? focusable[0] ?? entry.dialog).focus({ preventScroll: true });
 }
 
 function restoreBackgroundInteraction() {
@@ -304,6 +305,7 @@ export interface ConfirmDialogProps {
   open: boolean;
   title: string;
   description: string;
+  error?: string;
   confirmLabel?: string;
   danger?: boolean;
   busy?: boolean;
@@ -315,6 +317,7 @@ export function ConfirmDialog({
   open,
   title,
   description,
+  error,
   confirmLabel = '确认',
   danger = false,
   busy = false,
@@ -339,6 +342,7 @@ export function ConfirmDialog({
       }
     >
       <p className="ui-confirm-copy">{description}</p>
+      {error ? <p className="ui-confirm-error" role="alert">{error}</p> : null}
     </Modal>
   );
 }

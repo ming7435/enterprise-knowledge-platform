@@ -696,6 +696,18 @@
   line-height: var(--line-height-relaxed);
 }
 
+.ui-confirm-error {
+  margin: var(--space-3) 0 0;
+  border: 1px solid #fecdca;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--danger-subtle);
+  color: var(--danger);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  line-height: var(--line-height-normal);
+}
+
 .ui-toast-region {
   position: fixed;
   z-index: var(--z-toast);

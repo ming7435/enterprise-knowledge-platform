@@ -131,7 +131,9 @@ export default function App() {
       setWorkspaces(nextWorkspaces);
       setSelectedWorkspace(workspace);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建企业工作区失败');
+      const message = err instanceof Error ? err.message : '创建企业工作区失败';
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       setLoading(false);
     }
@@ -165,7 +167,9 @@ export default function App() {
         setSelectedWorkspace(null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除工作区失败');
+      const message = err instanceof Error ? err.message : '删除工作区失败';
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       setLoading(false);
     }

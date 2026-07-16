@@ -16,10 +16,10 @@ from app.services.workspace_service import (
     add_workspace_member_by_email,
     create_workspace_with_owner,
     delete_workspace_with_contents,
+    get_user_workspace_public,
     list_workspace_members,
     list_user_workspaces,
     remove_workspace_member,
-    require_workspace_member,
     update_workspace_member,
     workspace_to_public,
 )
@@ -53,7 +53,7 @@ def create_personal_workspace(
     )
     db.commit()
     db.refresh(workspace)
-    return workspace_to_public(workspace, "owner")
+    return workspace_to_public(workspace, "owner", document_count=0)
 
 
 @router.post(
@@ -75,7 +75,7 @@ def create_enterprise_workspace(
     )
     db.commit()
     db.refresh(workspace)
-    return workspace_to_public(workspace, "owner")
+    return workspace_to_public(workspace, "owner", document_count=0)
 
 
 @router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -178,9 +178,8 @@ def get_workspace(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    workspace, membership = require_workspace_member(
+    return get_user_workspace_public(
         db,
         user=current_user,
         workspace_id=workspace_id,
     )
-    return workspace_to_public(workspace, membership.role)

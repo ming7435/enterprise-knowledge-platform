@@ -12,6 +12,8 @@ export interface Workspace {
   description?: string | null;
   status: string;
   role?: string | null;
+  updated_at: string;
+  document_count: number;
 }
 
 export interface DocumentRecord {
