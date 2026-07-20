@@ -25,6 +25,7 @@ import { EnterpriseWorkspacePanel } from './EnterpriseWorkspace';
 import { AppHeader } from './layout/AppHeader';
 import { WorkspaceLayout } from './layout/WorkspaceLayout';
 import { PersonalWorkspacePanel } from './PersonalWorkspace';
+import { ConfirmDialog } from './ui/Overlay';
 import type {
   AdvancedNotification,
   AdvancedOverview,
@@ -61,6 +62,13 @@ interface WorkspaceShellProps {
   workspace: Workspace;
   onBackToWorkspaces: () => void;
   onLogout: () => void;
+}
+
+interface ConfirmationState {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  danger: boolean;
 }
 
 type PageKey =
@@ -146,6 +154,8 @@ export function WorkspaceShell({
   const [settingSavingKey, setSettingSavingKey] = useState<string | null>(null);
   const [settingTestingKey, setSettingTestingKey] = useState<string | null>(null);
   const [moduleError, setModuleError] = useState<string | null>(null);
+  const [confirmationState, setConfirmationState] = useState<ConfirmationState | null>(null);
+  const confirmationResolveRef = useRef<((confirmed: boolean) => void) | null>(null);
 
   const navItems = workspace.type === 'enterprise' ? enterpriseNav : personalNav;
   const currentNav = navItems.find((item) => item.key === activePage) ?? {
@@ -158,6 +168,15 @@ export function WorkspaceShell({
   const canManageMembers = workspace.role === 'owner' || workspace.role === 'admin';
   const activeChatModelName = getActiveChatModelName(workspace.type, workspaceSettings);
   const currentUserName = getDisplayName(user);
+
+  useEffect(() => {
+    return () => {
+      const resolve = confirmationResolveRef.current;
+      confirmationResolveRef.current = null;
+      setConfirmationState(null);
+      resolve?.(false);
+    };
+  }, [workspace.id]);
 
   useEffect(() => {
     setDocuments([]);
@@ -213,7 +232,7 @@ export function WorkspaceShell({
     ) {
       void loadWorkspaceModules();
     }
-    if (activePage === 'settings' || activePage === 'chat') {
+    if (activePage === 'settings' || activePage === 'chat' || activePage === 'knowledge') {
       void loadWorkspaceSettings();
     }
   }, [activePage, workspace.id]);
@@ -254,7 +273,7 @@ export function WorkspaceShell({
       const [nextDocuments, nextKnowledgeBase, nextChunks] = await Promise.all([
         api.documents(token, workspace.id),
         api.knowledgeBase(token, workspace.id),
-        api.knowledgeChunks(token, workspace.id, 8)
+        api.knowledgeChunks(token, workspace.id, 500)
       ]);
       setDocuments(nextDocuments);
       setKnowledgeBase(nextKnowledgeBase);
@@ -344,7 +363,7 @@ export function WorkspaceShell({
       ] = await Promise.all([
         api.documents(token, workspace.id),
         api.knowledgeBase(token, workspace.id),
-        api.knowledgeChunks(token, workspace.id, 8),
+        api.knowledgeChunks(token, workspace.id, 500),
         api.workspaceMembers(token, workspace.id),
         api.auditLogs(token, workspace.id),
         api.advancedOverview(token, workspace.id),
@@ -394,23 +413,35 @@ export function WorkspaceShell({
     }
   }
 
-  async function handleReprocessDocument(document: DocumentRecord) {
-    const confirmed = window.confirm(`确认重新解析“${document.filename}”吗？现有片段会在任务中重建。`);
-    if (!confirmed) return;
+  async function handleReprocessDocument(document: DocumentRecord): Promise<boolean> {
+    const confirmed = await requestConfirmation({
+      title: '重新解析文档',
+      description: `确认重新解析“${document.filename}”吗？现有片段会在任务中重建。`,
+      confirmLabel: '重新解析',
+      danger: true
+    });
+    if (!confirmed) return false;
     try {
       setModuleError(null);
       setModuleNotice(null);
       await api.reprocessDocument(token, workspace.id, document.id);
       setModuleNotice(`“${document.filename}”已进入重新解析队列。`);
       await loadWorkspaceModules(true);
+      return true;
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '重新解析失败');
+      return false;
     }
   }
 
-  async function handleDeleteDocument(document: DocumentRecord) {
-    const confirmed = window.confirm(`确认删除“${document.filename}”吗？对应知识片段也会同步移除。`);
-    if (!confirmed) return;
+  async function handleDeleteDocument(document: DocumentRecord): Promise<boolean> {
+    const confirmed = await requestConfirmation({
+      title: '删除文档',
+      description: `确认删除“${document.filename}”吗？对应知识片段也会同步移除。`,
+      confirmLabel: '删除',
+      danger: true
+    });
+    if (!confirmed) return false;
     try {
       setDeletingDocumentId(document.id);
       setDeletingDocumentIds([document.id]);
@@ -425,18 +456,25 @@ export function WorkspaceShell({
           : '文档已删除，对应知识片段已同步清理。'
       );
       await loadWorkspaceModules();
+      return true;
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '文档删除失败');
+      return false;
     } finally {
       setDeletingDocumentId(null);
       setDeletingDocumentIds([]);
     }
   }
 
-  async function handleDeleteDocuments(selectedDocuments: DocumentRecord[]) {
-    if (selectedDocuments.length === 0) return;
-    const confirmed = window.confirm(`确认同时删除选中的 ${selectedDocuments.length} 个文件知识库吗？对应知识片段也会同步移除。`);
-    if (!confirmed) return;
+  async function handleDeleteDocuments(selectedDocuments: DocumentRecord[]): Promise<boolean> {
+    if (selectedDocuments.length === 0) return false;
+    const confirmed = await requestConfirmation({
+      title: '批量删除文档',
+      description: `确认同时删除选中的 ${selectedDocuments.length} 个文件知识库吗？对应知识片段也会同步移除。`,
+      confirmLabel: '删除',
+      danger: true
+    });
+    if (!confirmed) return false;
     try {
       const ids = selectedDocuments.map((document) => document.id);
       setDeletingDocumentIds(ids);
@@ -452,12 +490,29 @@ export function WorkspaceShell({
       );
       setModuleNotice(`已同时删除 ${selectedDocuments.length} 个文件知识库。`);
       await loadWorkspaceModules();
+      return true;
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '批量删除文件失败');
+      return false;
     } finally {
       setDeletingDocumentId(null);
       setDeletingDocumentIds([]);
     }
+  }
+
+  function requestConfirmation(nextState: ConfirmationState): Promise<boolean> {
+    confirmationResolveRef.current?.(false);
+    return new Promise((resolve) => {
+      confirmationResolveRef.current = resolve;
+      setConfirmationState(nextState);
+    });
+  }
+
+  function resolveConfirmation(confirmed: boolean) {
+    const resolve = confirmationResolveRef.current;
+    confirmationResolveRef.current = null;
+    setConfirmationState(null);
+    resolve?.(confirmed);
   }
 
   async function handleSearch() {
@@ -501,6 +556,7 @@ export function WorkspaceShell({
       setDocumentContents((items) => ({ ...items, [document.id]: content }));
     } catch (err) {
       setModuleError(err instanceof Error ? err.message : '文档全文加载失败');
+      throw err;
     }
   }
 
@@ -533,7 +589,12 @@ export function WorkspaceShell({
   }
 
   async function handleDeleteAuditLog(log: AuditLogRecord) {
-    const confirmed = window.confirm('确认删除这条审计日志吗？删除后仅从当前企业工作区审计日志中移除。');
+    const confirmed = await requestConfirmation({
+      title: '删除审计日志',
+      description: '确认删除这条审计日志吗？删除后仅从当前企业工作区审计日志中移除。',
+      confirmLabel: '删除',
+      danger: true
+    });
     if (!confirmed) return;
     try {
       setDeletingAuditLogId(log.id);
@@ -550,7 +611,12 @@ export function WorkspaceShell({
   }
 
   async function handleDeleteAllAuditLogs() {
-    const confirmed = window.confirm('确认统一删除当前企业工作区的全部审计日志吗？该操作不会影响个人工作区或其他企业工作区。');
+    const confirmed = await requestConfirmation({
+      title: '删除全部审计日志',
+      description: '确认统一删除当前企业工作区的全部审计日志吗？该操作不会影响个人工作区或其他企业工作区。',
+      confirmLabel: '全部删除',
+      danger: true
+    });
     if (!confirmed) return;
     try {
       setAuditBulkDeleting(true);
@@ -567,7 +633,12 @@ export function WorkspaceShell({
   }
 
   async function handleDeleteAuditLogsByRetention(retentionDays: number) {
-    const confirmed = window.confirm(`确认定时删除当前企业工作区中超过 ${retentionDays} 天的审计日志吗？`);
+    const confirmed = await requestConfirmation({
+      title: '按保留期删除审计日志',
+      description: `确认定时删除当前企业工作区中超过 ${retentionDays} 天的审计日志吗？`,
+      confirmLabel: '删除',
+      danger: true
+    });
     if (!confirmed) return;
     try {
       setAuditRetentionDeleting(true);
@@ -604,7 +675,12 @@ export function WorkspaceShell({
   }
 
   async function handleRebuildKnowledgeGraph() {
-    const confirmed = window.confirm('确认重建当前工作区知识图谱吗？系统会清理旧的 Neo4j 图谱节点和关系，并根据当前文档重新抽取实体关系。');
+    const confirmed = await requestConfirmation({
+      title: '重建知识图谱',
+      description: '确认重建当前工作区知识图谱吗？系统会清理旧的 Neo4j 图谱节点和关系，并根据当前文档重新抽取实体关系。',
+      confirmLabel: '重建',
+      danger: true
+    });
     if (!confirmed) return;
     try {
       setModuleLoading(true);
@@ -729,7 +805,12 @@ export function WorkspaceShell({
   }
 
   async function handleRemoveMember(member: WorkspaceMember) {
-    const confirmed = window.confirm(`确认移除“${member.username}”吗？`);
+    const confirmed = await requestConfirmation({
+      title: '移除成员',
+      description: `确认移除“${member.username}”吗？`,
+      confirmLabel: '移除',
+      danger: true
+    });
     if (!confirmed) return;
     try {
       setMemberActionId(member.id);
@@ -847,13 +928,17 @@ export function WorkspaceShell({
     setActivePage('chat');
   }
 
-  function handleDeleteChatTurn(messageId: string) {
-    const confirmed = window.confirm(
-      workspace.type === 'enterprise'
-        ? '确认删除这条企业问答历史吗？'
-        : '确认删除这条问答历史吗？'
-    );
-    if (!confirmed) return;
+  async function handleDeleteChatTurn(messageId: string): Promise<boolean> {
+    const confirmed = await requestConfirmation({
+      title: '删除问答记录',
+      description:
+        workspace.type === 'enterprise'
+          ? '确认删除这条企业问答历史吗？'
+          : '确认删除这条问答历史吗？',
+      confirmLabel: '删除',
+      danger: true
+    });
+    if (!confirmed) return false;
     setChatMessages((messages) => {
       const startIndex = messages.findIndex((message) => message.id === messageId);
       if (startIndex < 0) return messages;
@@ -864,18 +949,24 @@ export function WorkspaceShell({
       return messages.filter((_, index) => index < startIndex || index >= endIndex);
     });
     setModuleNotice('当前会话中的问答记录已删除。');
+    return true;
   }
 
-  function handleClearChatHistory() {
-    const confirmed = window.confirm(
-      workspace.type === 'enterprise'
-        ? '确认清空当前企业问答历史吗？'
-        : '确认清空当前会话历史吗？'
-    );
-    if (!confirmed) return;
+  async function handleClearChatHistory(): Promise<boolean> {
+    const confirmed = await requestConfirmation({
+      title: '清空问答历史',
+      description:
+        workspace.type === 'enterprise'
+          ? '确认清空当前企业问答历史吗？'
+          : '确认清空当前会话历史吗？',
+      confirmLabel: '清空',
+      danger: true
+    });
+    if (!confirmed) return false;
     setChatMessages([]);
     setChatSessionId(null);
     setModuleNotice('当前会话历史已清空。');
+    return true;
   }
 
   return (
@@ -1061,6 +1152,15 @@ export function WorkspaceShell({
           />
         )}
       </section>
+      <ConfirmDialog
+        open={confirmationState !== null}
+        title={confirmationState?.title ?? ''}
+        description={confirmationState?.description ?? ''}
+        confirmLabel={confirmationState?.confirmLabel}
+        danger={confirmationState?.danger}
+        onConfirm={() => resolveConfirmation(true)}
+        onClose={() => resolveConfirmation(false)}
+      />
     </WorkspaceLayout>
   );
 }

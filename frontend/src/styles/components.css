@@ -866,3 +866,202 @@
     max-height: calc(92vh - 130px);
   }
 }
+
+/* Shared personal knowledge and chat controls. */
+.ui-knowledge-selector {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 250px;
+  overflow: auto;
+}
+
+.ui-knowledge-selector-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.ui-knowledge-selector-item:hover {
+  border-color: var(--border-strong);
+  background: #fcfcfd;
+}
+
+.ui-knowledge-selector-item:has(input:checked) {
+  border-color: #b2ccff;
+  background: var(--primary-subtle);
+}
+
+.ui-knowledge-selector-item:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.ui-knowledge-selector-item input {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.ui-knowledge-selector-item span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.ui-knowledge-selector-item strong,
+.ui-knowledge-selector-item small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-knowledge-selector-item strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.ui-knowledge-selector-item small {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.ui-chat-composer {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+
+.ui-chat-composer:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(21, 94, 239, 0.12);
+}
+
+.ui-chat-composer textarea {
+  width: 100%;
+  min-height: 104px;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  line-height: var(--line-height-relaxed);
+}
+
+.ui-chat-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.ui-chat-composer-footer > span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-chat-composer-footer > div {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+
+.ui-citation-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.ui-citation-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.ui-citation-panel > header strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.ui-citation-panel > header span {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.ui-citation-empty {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.ui-citation-list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 330px;
+  overflow: auto;
+}
+
+.ui-citation-list article {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.ui-citation-list article > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.ui-citation-list article strong,
+.ui-citation-list article span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-citation-list article strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.ui-citation-list article span,
+.ui-citation-list article p {
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+}
+
+@media (max-width: 640px) {
+  .ui-chat-composer-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ui-chat-composer-footer > div {
+    justify-content: flex-end;
+  }
+}
