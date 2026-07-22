@@ -145,6 +145,8 @@ export function WorkspaceShell({
   const [useKnowledgeBaseForChat, setUseKnowledgeBaseForChat] = useState(false);
   const [chatLoading, setChatLoading] = useState(false);
   const chatAbortRef = useRef<AbortController | null>(null);
+  const activeWorkspaceIdRef = useRef(workspace.id);
+  activeWorkspaceIdRef.current = workspace.id;
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [deletingDocumentIds, setDeletingDocumentIds] = useState<string[]>([]);
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
@@ -179,6 +181,8 @@ export function WorkspaceShell({
   }, [workspace.id]);
 
   useEffect(() => {
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
     setDocuments([]);
     setKnowledgeBase(null);
     setKnowledgeChunks([]);
@@ -266,31 +270,37 @@ export function WorkspaceShell({
   }, [hasProcessingDocuments, workspace.id]);
 
   async function loadWorkspaceModules(silent = false) {
+    const requestWorkspaceId = workspace.id;
     try {
       if (!silent) setModuleLoading(true);
       setModuleError(null);
       if (!silent) setModuleNotice(null);
       const [nextDocuments, nextKnowledgeBase, nextChunks] = await Promise.all([
-        api.documents(token, workspace.id),
-        api.knowledgeBase(token, workspace.id),
-        api.knowledgeChunks(token, workspace.id, 500)
+        api.documents(token, requestWorkspaceId),
+        api.knowledgeBase(token, requestWorkspaceId),
+        api.knowledgeChunks(token, requestWorkspaceId, 500)
       ]);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setDocuments(nextDocuments);
       setKnowledgeBase(nextKnowledgeBase);
       setKnowledgeChunks(nextChunks);
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '模块数据加载失败');
     } finally {
-      if (!silent) setModuleLoading(false);
+      if (!silent && activeWorkspaceIdRef.current === requestWorkspaceId) setModuleLoading(false);
     }
   }
 
   async function loadWorkspaceSettings() {
+    const requestWorkspaceId = workspace.id;
     try {
       setModuleError(null);
-      const nextSettings = await api.workspaceSettings(token, workspace.id);
+      const nextSettings = await api.workspaceSettings(token, requestWorkspaceId);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setWorkspaceSettings(nextSettings);
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '配置数据加载失败');
     }
   }
@@ -299,11 +309,13 @@ export function WorkspaceShell({
     settingKey: string,
     settingValue: Record<string, unknown>
   ) {
+    const requestWorkspaceId = workspace.id;
     try {
       setSettingSavingKey(settingKey);
       setModuleError(null);
       setModuleNotice(null);
-      const saved = await api.saveWorkspaceSetting(token, workspace.id, settingKey, settingValue);
+      const saved = await api.saveWorkspaceSetting(token, requestWorkspaceId, settingKey, settingValue);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setWorkspaceSettings((items) => {
         const exists = items.some((item) => item.setting_key === settingKey);
         if (!exists) return [...items, saved];
@@ -311,9 +323,10 @@ export function WorkspaceShell({
       });
       setModuleNotice('配置已保存，后续问答会使用新的工作区配置。');
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '配置保存失败');
     } finally {
-      setSettingSavingKey(null);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setSettingSavingKey(null);
     }
   }
 
@@ -321,16 +334,18 @@ export function WorkspaceShell({
     settingKey: string,
     settingValue: Record<string, unknown>
   ): Promise<WorkspaceModelConnectionTestResult | null> {
+    const requestWorkspaceId = workspace.id;
     try {
       setSettingTestingKey(settingKey);
       setModuleError(null);
       setModuleNotice(null);
       const result = await api.testWorkspaceModelConnection(
         token,
-        workspace.id,
+        requestWorkspaceId,
         settingKey,
         settingValue
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return null;
       if (result.ok) {
         setModuleNotice(`${result.message}，当前模型：${result.model_name}`);
       } else {
@@ -338,50 +353,61 @@ export function WorkspaceShell({
       }
       return result;
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return null;
       const message = err instanceof Error ? err.message : '模型 API 连接测试失败';
       setModuleError(message);
       return null;
     } finally {
-      setSettingTestingKey(null);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setSettingTestingKey(null);
     }
   }
 
   async function loadEnterpriseDashboard() {
+    const requestWorkspaceId = workspace.id;
     try {
       setModuleLoading(true);
       setModuleError(null);
       setModuleNotice(null);
-      const [
-        nextDocuments,
-        nextKnowledgeBase,
-        nextChunks,
-        nextMembers,
-        nextLogs,
-        overview,
-        graph,
-        notifications
-      ] = await Promise.all([
-        api.documents(token, workspace.id),
-        api.knowledgeBase(token, workspace.id),
-        api.knowledgeChunks(token, workspace.id, 500),
-        api.workspaceMembers(token, workspace.id),
-        api.auditLogs(token, workspace.id),
-        api.advancedOverview(token, workspace.id),
-        api.knowledgeGraph(token, workspace.id),
-        api.advancedNotifications(token, workspace.id)
+      const [nextDocuments, nextKnowledgeBase, nextChunks, overview, graph, notifications] = await Promise.all([
+        api.documents(token, requestWorkspaceId),
+        api.knowledgeBase(token, requestWorkspaceId),
+        api.knowledgeChunks(token, requestWorkspaceId, 500),
+        api.advancedOverview(token, requestWorkspaceId),
+        api.knowledgeGraph(token, requestWorkspaceId),
+        api.advancedNotifications(token, requestWorkspaceId)
       ]);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setDocuments(nextDocuments);
       setKnowledgeBase(nextKnowledgeBase);
       setKnowledgeChunks(nextChunks);
-      setMembers(nextMembers);
-      setAuditLogs(nextLogs);
       setAdvancedOverview(overview);
       setKnowledgeGraph(graph);
       setAdvancedNotifications(notifications);
+
+      if (canManageMembers) {
+        try {
+          const [nextMembers, nextLogs] = await Promise.all([
+            api.workspaceMembers(token, requestWorkspaceId),
+            api.auditLogs(token, requestWorkspaceId)
+          ]);
+          if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
+          setMembers(nextMembers);
+          setAuditLogs(nextLogs);
+        } catch {
+          if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
+          setMembers([]);
+          setAuditLogs([]);
+          setModuleNotice('企业知识数据已加载，成员或审计管理数据暂时不可用。');
+        }
+      } else {
+        setMembers([]);
+        setAuditLogs([]);
+      }
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '企业首页数据加载失败');
     } finally {
-      setModuleLoading(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setModuleLoading(false);
     }
   }
 
@@ -391,13 +417,15 @@ export function WorkspaceShell({
 
   async function handleUpload() {
     if (selectedFiles.length === 0) return;
+    const requestWorkspaceId = workspace.id;
     try {
       setUploading(true);
       setModuleError(null);
       setModuleNotice(null);
       await Promise.all(
-        selectedFiles.map((file) => api.uploadDocument(token, workspace.id, file))
+        selectedFiles.map((file) => api.uploadDocument(token, requestWorkspaceId, file))
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       const uploadedCount = selectedFiles.length;
       setSelectedFiles([]);
       setModuleNotice(
@@ -407,9 +435,10 @@ export function WorkspaceShell({
       );
       await loadWorkspaceModules();
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '文档上传失败');
     } finally {
-      setUploading(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setUploading(false);
     }
   }
 
@@ -421,14 +450,17 @@ export function WorkspaceShell({
       danger: true
     });
     if (!confirmed) return false;
+    const requestWorkspaceId = workspace.id;
     try {
       setModuleError(null);
       setModuleNotice(null);
-      await api.reprocessDocument(token, workspace.id, document.id);
+      await api.reprocessDocument(token, requestWorkspaceId, document.id);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return false;
       setModuleNotice(`“${document.filename}”已进入重新解析队列。`);
       await loadWorkspaceModules(true);
       return true;
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return false;
       setModuleError(err instanceof Error ? err.message : '重新解析失败');
       return false;
     }
@@ -442,12 +474,14 @@ export function WorkspaceShell({
       danger: true
     });
     if (!confirmed) return false;
+    const requestWorkspaceId = workspace.id;
     try {
       setDeletingDocumentId(document.id);
       setDeletingDocumentIds([document.id]);
       setModuleError(null);
       setModuleNotice(null);
-      await api.deleteDocument(token, workspace.id, document.id);
+      await api.deleteDocument(token, requestWorkspaceId, document.id);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return false;
       setSearchResults([]);
       setSelectedKnowledgeDocumentIds((ids) => ids.filter((id) => id !== document.id));
       setModuleNotice(
@@ -458,11 +492,14 @@ export function WorkspaceShell({
       await loadWorkspaceModules();
       return true;
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return false;
       setModuleError(err instanceof Error ? err.message : '文档删除失败');
       return false;
     } finally {
-      setDeletingDocumentId(null);
-      setDeletingDocumentIds([]);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) {
+        setDeletingDocumentId(null);
+        setDeletingDocumentIds([]);
+      }
     }
   }
 
@@ -475,6 +512,7 @@ export function WorkspaceShell({
       danger: true
     });
     if (!confirmed) return false;
+    const requestWorkspaceId = workspace.id;
     try {
       const ids = selectedDocuments.map((document) => document.id);
       setDeletingDocumentIds(ids);
@@ -482,8 +520,9 @@ export function WorkspaceShell({
       setModuleError(null);
       setModuleNotice(null);
       await Promise.all(
-        selectedDocuments.map((document) => api.deleteDocument(token, workspace.id, document.id))
+        selectedDocuments.map((document) => api.deleteDocument(token, requestWorkspaceId, document.id))
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return false;
       setSearchResults([]);
       setSelectedKnowledgeDocumentIds((currentIds) =>
         currentIds.filter((id) => !ids.includes(id))
@@ -492,11 +531,14 @@ export function WorkspaceShell({
       await loadWorkspaceModules();
       return true;
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return false;
       setModuleError(err instanceof Error ? err.message : '批量删除文件失败');
       return false;
     } finally {
-      setDeletingDocumentId(null);
-      setDeletingDocumentIds([]);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) {
+        setDeletingDocumentId(null);
+        setDeletingDocumentIds([]);
+      }
     }
   }
 
@@ -521,6 +563,7 @@ export function WorkspaceShell({
       setSearchResults([]);
       return;
     }
+    const requestWorkspaceId = workspace.id;
     try {
       setSearching(true);
       setModuleError(null);
@@ -529,16 +572,18 @@ export function WorkspaceShell({
         knowledgeDocumentFilter === 'all' ? undefined : [knowledgeDocumentFilter];
       const results = await api.searchKnowledge(
         token,
-        workspace.id,
+        requestWorkspaceId,
         query,
         20,
         filterDocumentIds
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setSearchResults(results);
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '知识库检索失败');
     } finally {
-      setSearching(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setSearching(false);
     }
   }
 
@@ -550,41 +595,58 @@ export function WorkspaceShell({
 
   async function handleLoadDocumentContent(document: DocumentRecord) {
     if (documentContents[document.id]) return;
+    const requestWorkspaceId = workspace.id;
     try {
       setModuleError(null);
-      const content = await api.documentContent(token, workspace.id, document.id);
+      const content = await api.documentContent(token, requestWorkspaceId, document.id);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setDocumentContents((items) => ({ ...items, [document.id]: content }));
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '文档全文加载失败');
       throw err;
     }
   }
 
   async function loadMembers() {
+    const requestWorkspaceId = workspace.id;
+    if (!canManageMembers) {
+      setMembers([]);
+      return;
+    }
     try {
       setModuleLoading(true);
       setModuleError(null);
       setModuleNotice(null);
-      const nextMembers = await api.workspaceMembers(token, workspace.id);
+      const nextMembers = await api.workspaceMembers(token, requestWorkspaceId);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setMembers(nextMembers);
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '成员数据加载失败');
     } finally {
-      setModuleLoading(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setModuleLoading(false);
     }
   }
 
   async function loadAuditLogs() {
+    const requestWorkspaceId = workspace.id;
+    if (!canManageMembers) {
+      setAuditLogs([]);
+      return;
+    }
     try {
       setModuleLoading(true);
       setModuleError(null);
       setModuleNotice(null);
-      const nextLogs = await api.auditLogs(token, workspace.id);
+      const nextLogs = await api.auditLogs(token, requestWorkspaceId);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setAuditLogs(nextLogs);
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '审计日志加载失败');
     } finally {
-      setModuleLoading(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setModuleLoading(false);
     }
   }
 
@@ -596,17 +658,20 @@ export function WorkspaceShell({
       danger: true
     });
     if (!confirmed) return;
+    const requestWorkspaceId = workspace.id;
     try {
       setDeletingAuditLogId(log.id);
       setModuleError(null);
       setModuleNotice(null);
-      await api.deleteAuditLog(token, workspace.id, log.id);
+      await api.deleteAuditLog(token, requestWorkspaceId, log.id);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setAuditLogs((logs) => logs.filter((item) => item.id !== log.id));
       setModuleNotice('审计日志已删除，仅影响当前企业工作区。');
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '审计日志删除失败');
     } finally {
-      setDeletingAuditLogId(null);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setDeletingAuditLogId(null);
     }
   }
 
@@ -618,59 +683,68 @@ export function WorkspaceShell({
       danger: true
     });
     if (!confirmed) return;
+    const requestWorkspaceId = workspace.id;
     try {
       setAuditBulkDeleting(true);
       setModuleError(null);
       setModuleNotice(null);
-      const result = await api.deleteAuditLogs(token, workspace.id);
+      const result = await api.deleteAuditLogs(token, requestWorkspaceId);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setAuditLogs([]);
       setModuleNotice(`已统一删除 ${result.deleted_count} 条审计日志，仅影响当前企业工作区。`);
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '审计日志统一删除失败');
     } finally {
-      setAuditBulkDeleting(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setAuditBulkDeleting(false);
     }
   }
 
   async function handleDeleteAuditLogsByRetention(retentionDays: number) {
     const confirmed = await requestConfirmation({
       title: '按保留期删除审计日志',
-      description: `确认定时删除当前企业工作区中超过 ${retentionDays} 天的审计日志吗？`,
+      description: `确认立即清理当前企业工作区中超过 ${retentionDays} 天的审计日志吗？这是按保留期执行的一次性清理。`,
       confirmLabel: '删除',
       danger: true
     });
     if (!confirmed) return;
+    const requestWorkspaceId = workspace.id;
     try {
       setAuditRetentionDeleting(true);
       setModuleError(null);
       setModuleNotice(null);
-      const result = await api.deleteAuditLogs(token, workspace.id, retentionDays);
+      const result = await api.deleteAuditLogs(token, requestWorkspaceId, retentionDays);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       await loadAuditLogs();
       setModuleNotice(`已删除超过 ${retentionDays} 天的审计日志 ${result.deleted_count} 条。`);
     } catch (err) {
-      setModuleError(err instanceof Error ? err.message : '审计日志定时删除失败');
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
+      setModuleError(err instanceof Error ? err.message : '审计日志保留期清理失败');
     } finally {
-      setAuditRetentionDeleting(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setAuditRetentionDeleting(false);
     }
   }
 
   async function loadAdvancedDashboard(documentIds = selectedGraphDocumentIds) {
+    const requestWorkspaceId = workspace.id;
     try {
       setModuleLoading(true);
       setModuleError(null);
       setModuleNotice(null);
       const [overview, graph, notifications] = await Promise.all([
-        api.advancedOverview(token, workspace.id),
-        api.knowledgeGraph(token, workspace.id, documentIds),
-        api.advancedNotifications(token, workspace.id)
+        api.advancedOverview(token, requestWorkspaceId),
+        api.knowledgeGraph(token, requestWorkspaceId, documentIds),
+        api.advancedNotifications(token, requestWorkspaceId)
       ]);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setAdvancedOverview(overview);
       setKnowledgeGraph(graph);
       setAdvancedNotifications(notifications);
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '高级驾驶舱加载失败');
     } finally {
-      setModuleLoading(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setModuleLoading(false);
     }
   }
 
@@ -682,24 +756,27 @@ export function WorkspaceShell({
       danger: true
     });
     if (!confirmed) return;
+    const requestWorkspaceId = workspace.id;
     try {
       setModuleLoading(true);
       setModuleError(null);
       setModuleNotice(null);
-      await api.rebuildKnowledgeGraph(token, workspace.id);
+      await api.rebuildKnowledgeGraph(token, requestWorkspaceId);
       const [overview, graph, notifications] = await Promise.all([
-        api.advancedOverview(token, workspace.id),
-        api.knowledgeGraph(token, workspace.id, selectedGraphDocumentIds),
-        api.advancedNotifications(token, workspace.id)
+        api.advancedOverview(token, requestWorkspaceId),
+        api.knowledgeGraph(token, requestWorkspaceId, selectedGraphDocumentIds),
+        api.advancedNotifications(token, requestWorkspaceId)
       ]);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setAdvancedOverview(overview);
       setKnowledgeGraph(graph);
       setAdvancedNotifications(notifications);
       setModuleNotice('已按当前工作区文档重新生成 Neo4j 知识图谱。');
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '知识图谱重建失败');
     } finally {
-      setModuleLoading(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setModuleLoading(false);
     }
   }
 
@@ -709,23 +786,29 @@ export function WorkspaceShell({
   }
 
   async function handleSearchGraphNodes(query: string, documentIds?: string[]) {
+    const requestWorkspaceId = workspace.id;
     const result = await api.searchGraphNodes(
       token,
-      workspace.id,
+      requestWorkspaceId,
       query,
       20,
       documentIds ?? selectedGraphDocumentIds
     );
+    if (activeWorkspaceIdRef.current !== requestWorkspaceId) return [];
     return result.results;
   }
 
   async function handleLoadGraphNodeDetail(nodeId: string): Promise<KnowledgeGraphNode | null> {
-    const result = await api.graphNodeDetail(token, workspace.id, nodeId);
+    const requestWorkspaceId = workspace.id;
+    const result = await api.graphNodeDetail(token, requestWorkspaceId, nodeId);
+    if (activeWorkspaceIdRef.current !== requestWorkspaceId) return null;
     return result.node ?? null;
   }
 
   async function handleLoadGraphNeighbors(nodeId: string): Promise<KnowledgeGraphNode[]> {
-    const result = await api.graphNeighbors(token, workspace.id, nodeId, 1);
+    const requestWorkspaceId = workspace.id;
+    const result = await api.graphNeighbors(token, requestWorkspaceId, nodeId, 1);
+    if (activeWorkspaceIdRef.current !== requestWorkspaceId) return [];
     return result.results;
   }
 
@@ -739,68 +822,77 @@ export function WorkspaceShell({
       setModuleError('请输入正确的成员邮箱。');
       return;
     }
+    const requestWorkspaceId = workspace.id;
     try {
       setMemberSaving(true);
       setModuleError(null);
       setModuleNotice(null);
       await api.addWorkspaceMember(
         token,
-        workspace.id,
+        requestWorkspaceId,
         email,
         memberRole,
         memberDepartment
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setMemberEmail('');
       setMemberDepartment('');
       setMemberRole('member');
       setModuleNotice('成员添加成功，权限仅作用于当前企业工作区。');
       await loadMembers();
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '成员添加失败');
     } finally {
-      setMemberSaving(false);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setMemberSaving(false);
     }
   }
 
   async function handleUpdateMemberRole(member: WorkspaceMember, role: WorkspaceRole) {
+    const requestWorkspaceId = workspace.id;
     try {
       setMemberActionId(member.id);
       setModuleError(null);
       setModuleNotice(null);
       await api.updateWorkspaceMember(
         token,
-        workspace.id,
+        requestWorkspaceId,
         member.id,
         role,
         member.department
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleNotice('成员角色已更新。');
       await loadMembers();
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '角色更新失败');
     } finally {
-      setMemberActionId(null);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setMemberActionId(null);
     }
   }
 
   async function handleUpdateMemberDepartment(member: WorkspaceMember, department: string) {
+    const requestWorkspaceId = workspace.id;
     try {
       setMemberActionId(member.id);
       setModuleError(null);
       setModuleNotice(null);
       await api.updateWorkspaceMember(
         token,
-        workspace.id,
+        requestWorkspaceId,
         member.id,
         member.role,
         department
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleNotice('成员部门已更新。');
       await loadMembers();
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '部门更新失败');
     } finally {
-      setMemberActionId(null);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setMemberActionId(null);
     }
   }
 
@@ -812,23 +904,27 @@ export function WorkspaceShell({
       danger: true
     });
     if (!confirmed) return;
+    const requestWorkspaceId = workspace.id;
     try {
       setMemberActionId(member.id);
       setModuleError(null);
       setModuleNotice(null);
-      await api.removeWorkspaceMember(token, workspace.id, member.id);
+      await api.removeWorkspaceMember(token, requestWorkspaceId, member.id);
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleNotice('成员已从当前企业工作区移除，历史审计记录保留。');
       await loadMembers();
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleError(err instanceof Error ? err.message : '成员移除失败');
     } finally {
-      setMemberActionId(null);
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setMemberActionId(null);
     }
   }
 
   async function handleAskChat() {
     const question = chatQuestion.trim();
     if (!question) return;
+    const requestWorkspaceId = workspace.id;
     const userMessage: ChatMessageView = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -859,12 +955,13 @@ export function WorkspaceShell({
       ]);
       await api.askChatStream(
         token,
-        workspace.id,
+        requestWorkspaceId,
         question,
         chatSessionId,
         useKnowledgeBaseForChat ? selectedKnowledgeDocumentIds : [],
         useKnowledgeBaseForChat,
         (event, data) => {
+          if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
           if (event === 'meta') {
             setChatSessionId(String(data.session_id || ''));
             setChatMessages((messages) =>
@@ -896,6 +993,7 @@ export function WorkspaceShell({
         },
         abortController.signal
       );
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       setModuleNotice(
         useKnowledgeBaseForChat
           ? workspace.type === 'enterprise'
@@ -904,14 +1002,15 @@ export function WorkspaceShell({
           : '普通大模型对话已完成，未使用知识库检索。'
       );
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== requestWorkspaceId) return;
       if (err instanceof DOMException && err.name === 'AbortError') {
         setModuleNotice('已停止本次回答。');
       } else {
         setModuleError(err instanceof Error ? err.message : '问答失败');
       }
     } finally {
-      chatAbortRef.current = null;
-      setChatLoading(false);
+      if (chatAbortRef.current === abortController) chatAbortRef.current = null;
+      if (activeWorkspaceIdRef.current === requestWorkspaceId) setChatLoading(false);
     }
   }
 

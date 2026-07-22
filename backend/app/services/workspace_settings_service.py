@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import os
 from dataclasses import dataclass
 
+from cryptography.fernet import Fernet, InvalidToken
 from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -32,7 +36,7 @@ MODEL_CATALOG: dict[str, dict[str, object]] = {
     },
     "qianwen": {
         "label": "千问",
-        "models": ["qwen3-235b-a22b", "qwen-max", "qwen-plus", "qwen-turbo", "qwq-32b"],
+        "models": ["qwen3-235b-a22b", "qwen-max", "qwen-plus", "qwen-turbo", "qwen3-coder-plus", "qwq-32b"],
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     },
     "doubao": {
@@ -70,6 +74,7 @@ MODEL_CATALOG: dict[str, dict[str, object]] = {
 PERSONAL_MODEL_KEY = "personal_model_config"
 PERSONAL_VECTOR_KEY = "personal_vector_config"
 ENTERPRISE_MODEL_API_KEY = "enterprise_model_api_config"
+_ENCRYPTED_SECRET_PREFIX = "enc:v1:"
 
 
 @dataclass(frozen=True)
@@ -86,6 +91,13 @@ def list_workspace_settings(db: Session, *, workspace: Workspace) -> list[dict]:
             select(WorkspaceSetting).where(WorkspaceSetting.workspace_id == workspace.id)
         ).scalars().all()
     }
+    migrated = any(
+        _migrate_model_secret(setting)
+        for key, setting in stored.items()
+        if key in {PERSONAL_MODEL_KEY, ENTERPRISE_MODEL_API_KEY}
+    )
+    if migrated:
+        db.flush()
     keys = _allowed_setting_keys(workspace)
     return [_setting_to_public(stored.get(key), key=key, workspace=workspace) for key in keys]
 
@@ -273,6 +285,9 @@ def _get_setting_value(
     ).scalar_one_or_none()
     if setting is None:
         return dict(default)
+    if setting_key in {PERSONAL_MODEL_KEY, ENTERPRISE_MODEL_API_KEY}:
+        if _migrate_model_secret(setting):
+            db.flush()
     return {**default, **(setting.setting_value or {})}
 
 
@@ -358,7 +373,7 @@ def _normalize_model_config(
         "provider_label": str(catalog_item["label"]),
         "model_name": model_name,
         "model_options": list(catalog_item["models"]),
-        "base_url": str(value.get("base_url") or catalog_item["base_url"]).strip().rstrip("/"),
+        "base_url": str(catalog_item["base_url"]).strip().rstrip("/"),
         "temperature": _float_value(value.get("temperature"), default=default.get("temperature", 0.2), min_value=0.0, max_value=2.0),
         "max_tokens": _int_value(value.get("max_tokens"), default=default.get("max_tokens", 2048), min_value=256, max_value=8192),
         "enable_rag": _bool_value(value.get("enable_rag"), default=default.get("enable_rag", True)),
@@ -367,9 +382,11 @@ def _normalize_model_config(
     if include_api_key:
         next_api_key = str(value.get("api_key") or "").strip()
         if next_api_key:
-            normalized["api_key"] = next_api_key
+            normalized["api_key"] = _encrypt_secret(next_api_key)
         elif existing_value and existing_value.get("api_key"):
-            normalized["api_key"] = existing_value["api_key"]
+            existing_api_key = _decrypt_secret(str(existing_value["api_key"]))
+            if existing_api_key:
+                normalized["api_key"] = _encrypt_secret(existing_api_key)
     return normalized
 
 
@@ -415,15 +432,16 @@ def _sanitize_setting_value(key: str, value: dict) -> dict:
     if key not in {PERSONAL_MODEL_KEY, ENTERPRISE_MODEL_API_KEY}:
         return value
     sanitized = {key_name: key_value for key_name, key_value in value.items() if key_name != "api_key"}
-    api_key = str(value.get("api_key") or "")
+    api_key = _decrypt_secret(str(value.get("api_key") or ""))
     sanitized["api_key_configured"] = bool(api_key)
     sanitized["api_key_masked"] = _mask_secret(api_key) if api_key else None
     return sanitized
 
 
 def _resolve_personal_model_api_config(config: dict, settings: Settings) -> dict | None:
-    if config.get("api_key"):
-        return config
+    stored_api_key = _decrypt_secret(str(config.get("api_key") or ""))
+    if stored_api_key:
+        return {**config, "api_key": stored_api_key}
     if settings.llm_provider.lower() == "local":
         return None
     provider = str(config.get("provider") or "deepseek").lower()
@@ -437,9 +455,52 @@ def _resolve_personal_model_api_config(config: dict, settings: Settings) -> dict
 
 
 def _resolve_enterprise_model_api_config(config: dict) -> dict | None:
-    if not config.get("api_key"):
+    stored_api_key = _decrypt_secret(str(config.get("api_key") or ""))
+    if not stored_api_key:
         return None
-    return config
+    return {**config, "api_key": stored_api_key}
+
+
+def _workspace_setting_cipher() -> Fernet:
+    secret = (
+        os.getenv("WORKSPACE_SETTING_SECRET_KEY")
+        or os.getenv("JWT_SECRET_KEY")
+        or "dev-only-change-me"
+    )
+    key = base64.urlsafe_b64encode(hashlib.sha256(secret.encode("utf-8")).digest())
+    return Fernet(key)
+
+
+def _encrypt_secret(secret: str) -> str:
+    if not secret:
+        return ""
+    if secret.startswith(_ENCRYPTED_SECRET_PREFIX):
+        return secret
+    token = _workspace_setting_cipher().encrypt(secret.encode("utf-8")).decode("ascii")
+    return f"{_ENCRYPTED_SECRET_PREFIX}{token}"
+
+
+def _decrypt_secret(secret: str) -> str:
+    if not secret:
+        return ""
+    if not secret.startswith(_ENCRYPTED_SECRET_PREFIX):
+        return secret
+    token = secret[len(_ENCRYPTED_SECRET_PREFIX):]
+    try:
+        return _workspace_setting_cipher().decrypt(token.encode("ascii")).decode("utf-8")
+    except (InvalidToken, UnicodeDecodeError, ValueError):
+        return ""
+
+
+def _migrate_model_secret(setting: WorkspaceSetting) -> bool:
+    value = dict(setting.setting_value or {})
+    secret = str(value.get("api_key") or "")
+    if not secret or secret.startswith(_ENCRYPTED_SECRET_PREFIX):
+        return False
+    value["api_key"] = _encrypt_secret(secret)
+    setting.setting_value = value
+    setting.encrypted = True
+    return True
 
 
 def _personal_model_default() -> dict:
