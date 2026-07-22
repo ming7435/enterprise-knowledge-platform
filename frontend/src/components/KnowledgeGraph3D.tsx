@@ -60,21 +60,14 @@ export default function KnowledgeGraph3D({
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.autoRotate = false;
-    controls.enableZoom = false;
+    controls.enableZoom = true;
+    controls.zoomSpeed = 0.78;
+    controls.rotateSpeed = 0.62;
+    controls.panSpeed = 0.72;
     controls.enablePan = true;
     controls.screenSpacePanning = true;
     controls.minDistance = 320;
     controls.maxDistance = 1320;
-
-    function handleGraphWheel(event: WheelEvent) {
-      if (!event.ctrlKey) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const direction = event.deltaY > 0 ? 1 : -1;
-      const distance = camera.position.length();
-      camera.position.setLength(Math.min(1320, Math.max(320, distance + direction * 46)));
-    }
-    renderer.domElement.addEventListener('wheel', handleGraphWheel, { passive: false });
 
     scene.add(new THREE.HemisphereLight(0xd8fff7, 0x081018, 1.08));
     scene.add(new THREE.AmbientLight(0x9ab5c8, 0.42));
@@ -95,6 +88,15 @@ export default function KnowledgeGraph3D({
     const meshById = new Map<string, THREE.Mesh>();
     const nodeSizeById = new Map<string, number>();
     const nodeByMesh = new Map<THREE.Object3D, KnowledgeGraphNode>();
+    const hitTargets: THREE.Object3D[] = [];
+    const connectedNodeIds = new Set<string>();
+    if (selectedNodeId) {
+      connectedNodeIds.add(selectedNodeId);
+      edges.forEach((edge) => {
+        if (edge.source === selectedNodeId) connectedNodeIds.add(edge.target);
+        if (edge.target === selectedNodeId) connectedNodeIds.add(edge.source);
+      });
+    }
 
     nodes.forEach((node) => {
       const position = positions[node.id] ?? new THREE.Vector3();
@@ -103,14 +105,18 @@ export default function KnowledgeGraph3D({
       const size = Math.min(22, 7 + sparseBoost + Math.sqrt(normalizedWeight) * 1.25);
       const semanticType = getNodeType(node);
       const color = new THREE.Color(getNodeColor(semanticType));
+      const selected = selectedNodeId === node.id;
+      const connected = !selectedNodeId || connectedNodeIds.has(node.id);
       const mesh = new THREE.Mesh(
         new THREE.SphereGeometry(size, 36, 22),
         new THREE.MeshStandardMaterial({
           color,
           emissive: color,
-          emissiveIntensity: selectedNodeId === node.id ? 0.2 : 0.07,
+          emissiveIntensity: selected ? 0.24 : 0.07,
           roughness: 0.36,
-          metalness: selectedNodeId === node.id ? 0.28 : 0.08
+          metalness: selected ? 0.28 : 0.08,
+          transparent: true,
+          opacity: connected ? 1 : 0.2
         })
       );
       mesh.position.copy(position);
@@ -119,19 +125,29 @@ export default function KnowledgeGraph3D({
       nodeSizeById.set(node.id, size);
       nodeByMesh.set(mesh, node);
 
+      const hitTarget = new THREE.Mesh(
+        new THREE.SphereGeometry(Math.max(size + 9, 18), 18, 12),
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      );
+      hitTarget.position.copy(position);
+      hitTarget.userData.nodeId = node.id;
+      scene.add(hitTarget);
+      hitTargets.push(hitTarget);
+      nodeByMesh.set(hitTarget, node);
+
       const halo = new THREE.Mesh(
         new THREE.SphereGeometry(size * 1.52, 32, 18),
         new THREE.MeshBasicMaterial({
           color,
           transparent: true,
-          opacity: selectedNodeId === node.id ? 0.2 : 0.08,
+          opacity: selected ? 0.24 : connected ? 0.08 : 0.015,
           depthWrite: false
         })
       );
       halo.position.copy(position);
       scene.add(halo);
 
-      if (nodes.length <= 36 || normalizedWeight >= 55 || selectedNodeId === node.id) {
+      if ((nodes.length <= 36 || normalizedWeight >= 55 || selected) && connected) {
         const label = makeTextSprite(node.label, typeLabels[semanticType] ?? semanticType, getNodeColor(semanticType), trimLabel);
         label.position.copy(position.clone().add(new THREE.Vector3(0, size + 22, 0)));
         scene.add(label);
@@ -160,7 +176,7 @@ export default function KnowledgeGraph3D({
         new THREE.LineBasicMaterial({
           color: relationColor,
           transparent: true,
-          opacity: connected ? 0.95 : 0.58
+          opacity: selectedNodeId ? (connected ? 0.95 : 0.1) : 0.58
         })
       );
       scene.add(line);
@@ -208,7 +224,7 @@ export default function KnowledgeGraph3D({
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
-      const hit = raycaster.intersectObjects(Array.from(meshById.values()), false)[0];
+      const hit = raycaster.intersectObjects(hitTargets, false)[0];
       if (hit) {
         const node = nodeByMesh.get(hit.object);
         if (node) onSelectRef.current(node);
@@ -232,7 +248,6 @@ export default function KnowledgeGraph3D({
       cancelAnimationFrame(animationFrame);
       renderer.domElement.removeEventListener('pointerdown', handlePointerDown);
       renderer.domElement.removeEventListener('click', handleClick);
-      renderer.domElement.removeEventListener('wheel', handleGraphWheel);
       resizeObserver.disconnect();
       controls.dispose();
       scene.traverse((object) => {
@@ -251,7 +266,11 @@ export default function KnowledgeGraph3D({
     };
   }, [edges, getNodeColor, getNodeType, getRelationColor, nodes, selectedNodeId, trimLabel, typeLabels, typeOrder]);
 
-  return <div ref={containerRef} className="graph-3d-canvas" aria-label="3D 知识图谱" />;
+  return (
+    <div className="graph-3d-viewport">
+      <div ref={containerRef} className="graph-3d-canvas" aria-label="3D 知识图谱" />
+    </div>
+  );
 }
 
 function compute3DLayout(

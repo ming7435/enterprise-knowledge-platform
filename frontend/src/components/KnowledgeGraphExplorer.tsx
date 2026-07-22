@@ -1,28 +1,13 @@
-import {
-  Box,
-  Database,
-  Eye,
-  FileText,
-  Filter,
-  GitBranch,
-  Maximize2,
-  MousePointer2,
-  Network,
-  PanelRightOpen,
-  RefreshCw,
-  RotateCcw,
-  Search,
-  Share2,
-  Sparkles,
-  X
-} from 'lucide-react';
+import { Network, Search, Sparkles } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { DocumentRecord, KnowledgeGraph, KnowledgeGraphEdge, KnowledgeGraphNode } from '../types';
+import { GraphFilterDrawer } from './graph/GraphFilterDrawer';
+import { GraphInspectorDrawer } from './graph/GraphInspectorDrawer';
+import { GraphToolbar, type GraphMode } from './graph/GraphToolbar';
 
 const KnowledgeGraph3D = lazy(() => import('./KnowledgeGraph3D'));
 
-type GraphMode = '2d' | '3d';
 type ResultView = 'graph' | 'table' | 'text' | 'code';
 
 interface KnowledgeGraphExplorerProps {
@@ -44,6 +29,8 @@ interface KnowledgeGraphExplorerProps {
 
 const GRAPH_WIDTH = 1600;
 const GRAPH_HEIGHT = 900;
+const MIN_PANEL_WIDTH = 240;
+const MAX_PANEL_WIDTH = 520;
 
 const typeLabels: Record<string, string> = {
   entity: '文件实体',
@@ -205,6 +192,7 @@ export function KnowledgeGraphExplorer({
   const [resultView, setResultView] = useState<ResultView>('graph');
   const [query, setQuery] = useState('');
   const [enabledTypes, setEnabledTypes] = useState<string[]>([]);
+  const [enabledRelations, setEnabledRelations] = useState<string[]>([]);
   const [selectedNode, setSelectedNode] = useState<KnowledgeGraphNode | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -223,6 +211,7 @@ export function KnowledgeGraphExplorer({
   const [nodeDetailError, setNodeDetailError] = useState<string | null>(null);
   const [remoteNeighborIds, setRemoteNeighborIds] = useState<string[]>([]);
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const explorerRef = useRef<HTMLElement | null>(null);
   const rightPanelRef = useRef<HTMLElement | null>(null);
   const detailRequestIdRef = useRef(0);
   const searchCallbackRef = useRef(onSearchGraphNodes);
@@ -233,6 +222,10 @@ export function KnowledgeGraphExplorer({
     () => Array.from(new Set(nodes.map((node) => semanticTypeOfNode(node)))),
     [nodes]
   );
+  const availableRelations = useMemo(
+    () => Array.from(new Set(edges.map((edge) => edge.label || '关联'))),
+    [edges]
+  );
 
   useEffect(() => {
     setEnabledTypes((current) => {
@@ -240,6 +233,13 @@ export function KnowledgeGraphExplorer({
       return currentValid.length ? currentValid : availableTypes;
     });
   }, [availableTypes]);
+
+  useEffect(() => {
+    setEnabledRelations((current) => {
+      const currentValid = current.filter((relation) => availableRelations.includes(relation));
+      return currentValid.length ? currentValid : availableRelations;
+    });
+  }, [availableRelations]);
 
   useEffect(() => {
     searchCallbackRef.current = onSearchGraphNodes;
@@ -294,8 +294,12 @@ export function KnowledgeGraphExplorer({
     [filteredNodes]
   );
   const filteredEdges = useMemo(
-    () => edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
-    [edges, visibleNodeIds]
+    () => edges.filter((edge) => {
+      const relation = edge.label || '关联';
+      const matchesRelation = enabledRelations.length === 0 || enabledRelations.includes(relation);
+      return matchesRelation && visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target);
+    }),
+    [edges, enabledRelations, visibleNodeIds]
   );
   const filteredNodeById = useMemo(
     () => new Map(filteredNodes.map((node) => [node.id, node])),
@@ -310,6 +314,7 @@ export function KnowledgeGraphExplorer({
     setQuery('');
     setResultView('graph');
     setEnabledTypes(availableTypes);
+    setEnabledRelations(availableRelations);
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setPositions(computeLayout(filteredNodes, filteredEdges));
@@ -367,13 +372,29 @@ export function KnowledgeGraphExplorer({
     setNodeDetailLoading(false);
   }
 
+  function toggleRelation(relation: string) {
+    setEnabledRelations((current) =>
+      current.includes(relation) ? current.filter((item) => item !== relation) : [...current, relation]
+    );
+  }
+
+  function toggleFullscreen() {
+    const element = explorerRef.current;
+    if (!element) return;
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    void element.requestFullscreen?.();
+  }
+
   function startLeftPanelResize(event: React.PointerEvent<HTMLDivElement>) {
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = leftPanelWidth;
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextWidth = startWidth + (moveEvent.clientX - startX);
-      setLeftPanelWidth(Math.max(210, Math.min(420, nextWidth)));
+      setLeftPanelWidth(Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, nextWidth)));
     };
     const handlePointerUp = () => {
       window.removeEventListener('pointermove', handlePointerMove);
@@ -391,7 +412,7 @@ export function KnowledgeGraphExplorer({
     const startWidth = rightPanelWidth;
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const nextWidth = startWidth - (moveEvent.clientX - startX);
-      setRightPanelWidth(Math.max(280, Math.min(620, nextWidth)));
+      setRightPanelWidth(Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, nextWidth)));
     };
     const handlePointerUp = () => {
       window.removeEventListener('pointermove', handlePointerMove);
@@ -401,21 +422,6 @@ export function KnowledgeGraphExplorer({
     document.body.classList.add('graph-resizing-inspector');
     window.addEventListener('pointermove', handlePointerMove);
     window.addEventListener('pointerup', handlePointerUp);
-  }
-
-  function performPrimaryNodeAction(node: KnowledgeGraphNode) {
-    const type = normalizeType(node.type);
-    if (type === 'document') {
-      onOpenDocument(String(node.properties?.document_id || node.id.replace(/^document:/, '')));
-      return;
-    }
-    if (type === 'entity' || type === 'concept' || type === 'keyword' || type === 'chunk') {
-      onSearchKnowledge(node.label);
-      return;
-    }
-    if (type === 'question' || type === 'qa') {
-      onOpenQuestion();
-    }
   }
 
   const disabled = graph && graph.enabled === false;
@@ -441,7 +447,7 @@ export function KnowledgeGraphExplorer({
       const label = edge.label || '关联';
       counts.set(label, (counts.get(label) ?? 0) + 1);
     });
-    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
   }, [edges]);
   const localSearchResultNodes = useMemo(
     () =>
@@ -464,12 +470,6 @@ export function KnowledgeGraphExplorer({
         : [],
     [edges, selectedNode]
   );
-  const selectedDocumentId = selectedNode
-    ? String(selectedNode.properties?.last_document_id || selectedNode.properties?.document_id || '')
-    : '';
-  const selectedFilename = selectedNode
-    ? String(selectedNode.properties?.last_filename || selectedNode.properties?.filename || '暂无来源文件')
-    : '';
   const workbenchColumns = [
     leftPanelVisible ? 'var(--graph-left-panel-width, 260px)' : '',
     leftPanelVisible ? '8px' : '',
@@ -481,7 +481,7 @@ export function KnowledgeGraphExplorer({
     .join(' ');
 
   return (
-    <section className="graph-explorer neo4j-workbench" aria-label={`${workspaceLabel}知识图谱`}>
+    <section ref={explorerRef} className="graph-explorer neo4j-workbench" aria-label={`${workspaceLabel}知识图谱`}>
       <div className="graph-browser-shell">
         <div className="graph-command-bar">
           <div className="graph-command-title">
@@ -503,45 +503,12 @@ export function KnowledgeGraphExplorer({
             />
           </label>
           <div className="graph-command-actions">
-            <button type="button" onClick={onRefresh} disabled={loading}>
-              <RefreshCw size={16} aria-hidden="true" />
-              刷新
-            </button>
             <button type="button" className="graph-rebuild-button" onClick={onRebuild ?? onRefresh} disabled={loading}>
               <Sparkles size={16} aria-hidden="true" />
               重建
             </button>
           </div>
         </div>
-
-        {documents.length > 0 && (
-          <div className="graph-library-filter" aria-label="知识库图谱筛选">
-            <button
-              type="button"
-              className={selectedDocumentIds.length === 0 ? 'active' : ''}
-              onClick={() => onDocumentSelectionChange?.([])}
-              disabled={loading}
-            >
-              全部知识库
-            </button>
-            {documents.slice(0, 12).map((document) => (
-              <label
-                key={document.id}
-                className={selectedDocumentIds.includes(document.id) ? 'enabled' : ''}
-                title={document.filename}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedDocumentIds.includes(document.id)}
-                  onChange={() => toggleDocument(document.id)}
-                  disabled={loading}
-                />
-                {trimLabel(document.filename, 18)}
-              </label>
-            ))}
-            <span>{selectedDocumentIds.length ? `已组合 ${selectedDocumentIds.length} 个知识库` : '当前组合：全部文件'}</span>
-          </div>
-        )}
 
         {graph?.message && (
           <div className={`graph-state ${disabled || unavailable ? 'warning' : 'info'}`}>
@@ -559,6 +526,30 @@ export function KnowledgeGraphExplorer({
           <small>{filteredNodes.length} rows</small>
         </div>
 
+        <GraphToolbar
+          mode={mode}
+          loading={loading}
+          graphDisabled={!!disabled || !!unavailable}
+          filterVisible={leftPanelVisible}
+          inspectorVisible={rightPanelVisible}
+          resultRailVisible={resultRailVisible}
+          statusVisible={stageStatusVisible}
+          onModeChange={(nextMode) => {
+            setResultView('graph');
+            setMode(nextMode);
+          }}
+          onZoomIn={() => setZoom((value) => Math.min(1.8, value + 0.1))}
+          onZoomOut={() => setZoom((value) => Math.max(0.55, value - 0.1))}
+          onFit={fitView}
+          onReset={resetView}
+          onRefresh={onRefresh}
+          onToggleFilter={() => setLeftPanelVisible((value) => !value)}
+          onToggleInspector={() => setRightPanelVisible((value) => !value)}
+          onToggleResultRail={() => setResultRailVisible((value) => !value)}
+          onToggleStatus={() => setStageStatusVisible((value) => !value)}
+          onToggleFullscreen={toggleFullscreen}
+        />
+
         <div
           className={`graph-workbench-grid ${leftPanelVisible ? '' : 'left-panel-hidden'} ${rightPanelVisible ? '' : 'right-panel-hidden'}`}
           style={
@@ -569,102 +560,35 @@ export function KnowledgeGraphExplorer({
             } as React.CSSProperties
           }
         >
-          {leftPanelVisible && (
-          <aside className="graph-left-panel" aria-label="图谱图例与搜索结果">
-            <div className="graph-panel-card graph-scene-card">
-              <div className="graph-panel-heading">
-                <Database size={16} aria-hidden="true" />
-                <span>Scene</span>
-                <button
-                  type="button"
-                  className="graph-panel-icon-button"
-                  onClick={() => setLeftPanelVisible(false)}
-                  aria-label="隐藏图谱图例"
-                  title="隐藏图谱图例"
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              </div>
-              <strong>{filteredNodes.length}</strong>
-              <p>当前可见节点</p>
-              <small>{filteredEdges.length} 条关系 · {workspaceLabel}</small>
-            </div>
-
-            <div className="graph-panel-card">
-              <div className="graph-panel-heading">
-                <Filter size={16} aria-hidden="true" />
-                <span>实体类型</span>
-              </div>
-              <div className="graph-type-list">
-                {availableTypes.length === 0 ? (
-                  <span className="graph-muted">暂无类型</span>
-                ) : (
-                  availableTypes.map((type) => (
-                    <label key={type} className={enabledTypes.includes(type) ? 'enabled' : ''}>
-                      <input
-                        type="checkbox"
-                        checked={enabledTypes.includes(type)}
-                        onChange={() => toggleType(type)}
-                      />
-                      <i style={{ backgroundColor: colorForType(type) }} />
-                      <span>{semanticTypeLabels[type] ?? type}</span>
-                      <b>{typeCounts.get(type) ?? 0}</b>
-                    </label>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="graph-panel-card">
-              <div className="graph-panel-heading">
-                <GitBranch size={16} aria-hidden="true" />
-                <span>关系类型</span>
-              </div>
-              <div className="graph-relation-list">
-                {relationCounts.length === 0 ? (
-                  <span className="graph-muted">暂无关系</span>
-                ) : (
-                  relationCounts.map(([label, count]) => (
-                    <button type="button" key={label} onClick={() => setQuery(label)}>
-                      <i style={{ backgroundColor: colorForRelation(label) }} />
-                      <span>{label}</span>
-                      <b>{count}</b>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="graph-panel-card graph-search-results">
-              <div className="graph-panel-heading">
-                <Search size={16} aria-hidden="true" />
-                <span>检索结果</span>
-              </div>
-              {graphSearchLoading ? (
-                <p className="graph-muted">正在搜索完整图谱...</p>
-              ) : graphSearchError ? (
-                <p className="graph-inline-error">{graphSearchError}</p>
-              ) : searchResultNodes.length === 0 ? (
-                <p className="graph-muted">{query.trim() ? '没有找到相关实体。' : '输入关键词后在当前图谱中定位实体。'}</p>
-              ) : (
-                searchResultNodes.map((node) => (
-                  <button
-                    type="button"
-                    key={node.id}
-                    className={selectedNode?.id === node.id ? 'active' : ''}
-                    onClick={() => activateNode(node)}
-                  >
-                    <i style={{ backgroundColor: colorForType(semanticTypeOfNode(node)) }} />
-                    <span>
-                      <strong>{node.label}</strong>
-                      <small>{semanticTypeLabels[semanticTypeOfNode(node)] ?? semanticTypeOfNode(node)}</small>
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </aside>
-          )}
+          <GraphFilterDrawer
+            visible={leftPanelVisible}
+            workspaceLabel={workspaceLabel}
+            nodeCount={filteredNodes.length}
+            edgeCount={filteredEdges.length}
+            documents={documents}
+            selectedDocumentIds={selectedDocumentIds}
+            loading={loading}
+            availableTypes={availableTypes}
+            enabledTypes={enabledTypes}
+            typeCounts={typeCounts}
+            relationCounts={relationCounts}
+            enabledRelations={enabledRelations}
+            searchLoading={graphSearchLoading}
+            searchError={graphSearchError}
+            query={query}
+            searchResults={searchResultNodes}
+            selectedNodeId={selectedNode?.id ?? null}
+            getNodeType={semanticTypeOfNode}
+            getTypeLabel={(type) => semanticTypeLabels[type] ?? type}
+            getTypeColor={colorForType}
+            getRelationColor={colorForRelation}
+            onClose={() => setLeftPanelVisible(false)}
+            onClearDocuments={() => onDocumentSelectionChange?.([])}
+            onToggleDocument={toggleDocument}
+            onToggleType={toggleType}
+            onToggleRelation={toggleRelation}
+            onSelectNode={activateNode}
+          />
 
           {leftPanelVisible && (
             <div
@@ -678,77 +602,6 @@ export function KnowledgeGraphExplorer({
           )}
 
           <div className="graph-canvas-column">
-            <div className="graph-canvas-toolbar" aria-label="图谱场景控制">
-              <div className="segmented-control" role="group" aria-label="图谱模式">
-                <button
-                  type="button"
-                  className={mode === '2d' && resultView === 'graph' ? 'active' : ''}
-                  onClick={() => {
-                    setResultView('graph');
-                    setMode('2d');
-                  }}
-                >
-                  <Share2 size={16} aria-hidden="true" />
-                  2D
-                </button>
-                <button
-                  type="button"
-                  className={mode === '3d' && resultView === 'graph' ? 'active' : ''}
-                  onClick={() => {
-                    setResultView('graph');
-                    setMode('3d');
-                  }}
-                >
-                  <Box size={16} aria-hidden="true" />
-                  3D
-                </button>
-              </div>
-              <button type="button" onClick={fitView} disabled={loading || !!disabled || resultView !== 'graph'}>
-                <Maximize2 size={16} aria-hidden="true" />
-                适配
-              </button>
-              <button type="button" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} disabled={mode !== '2d' || resultView !== 'graph'}>
-                +
-              </button>
-              <button type="button" onClick={() => setZoom((value) => Math.max(0.55, value - 0.1))} disabled={mode !== '2d' || resultView !== 'graph'}>
-                -
-              </button>
-              <button type="button" onClick={resetView}>
-                <RotateCcw size={16} aria-hidden="true" />
-                重置
-              </button>
-              <button type="button" onClick={() => setLeftPanelVisible((value) => !value)}>
-                <Filter size={16} aria-hidden="true" />
-                {leftPanelVisible ? '隐藏图例' : '显示图例'}
-              </button>
-              <button type="button" onClick={() => setRightPanelVisible((value) => !value)}>
-                <PanelRightOpen size={16} aria-hidden="true" />
-                {rightPanelVisible ? '隐藏检查器' : '显示检查器'}
-              </button>
-              <button
-                type="button"
-                aria-pressed={resultRailVisible}
-                onClick={() => setResultRailVisible((value) => !value)}
-                title="显示或隐藏 Graph、Table、Text、Code 结果栏"
-              >
-                <Database size={16} aria-hidden="true" />
-                {resultRailVisible ? '隐藏结果栏' : '显示结果栏'}
-              </button>
-              <button
-                type="button"
-                aria-pressed={stageStatusVisible}
-                onClick={() => setStageStatusVisible((value) => !value)}
-                title="显示或隐藏画布状态与快捷控制"
-              >
-                <Eye size={16} aria-hidden="true" />
-                {stageStatusVisible ? '隐藏状态' : '显示状态'}
-              </button>
-              <span>
-                <MousePointer2 size={14} aria-hidden="true" />
-                拖拽节点，Ctrl + 滚轮缩放
-              </span>
-            </div>
-
             <div className={`graph-result-frame ${resultRailVisible ? '' : 'rail-hidden'}`}>
               {resultRailVisible && <div className="graph-result-rail" role="tablist" aria-label="图谱结果视图">
                 {[
@@ -886,106 +739,25 @@ export function KnowledgeGraphExplorer({
           />
           )}
           {rightPanelVisible && (
-          <aside ref={rightPanelRef} className="graph-right-panel" aria-label="图谱节点详情">
-            <div className="graph-inspector-heading">
-              <PanelRightOpen size={17} aria-hidden="true" />
-              <span>实体检查器</span>
-              <button type="button" onClick={() => setRightPanelVisible(false)} aria-label="隐藏实体检查器" title="隐藏实体检查器">
-                <X size={16} aria-hidden="true" />
-              </button>
-              {selectedNode && (
-                <button type="button" onClick={() => setSelectedNode(null)} aria-label="清空节点详情" title="清空节点详情">
-                  <X size={16} aria-hidden="true" />
-                </button>
-              )}
-            </div>
-            {selectedNode ? (
-              <>
-                {nodeDetailLoading && <div className="graph-inspector-state">正在加载节点详情与邻居...</div>}
-                {nodeDetailError && <div className="graph-inspector-state error">{nodeDetailError}</div>}
-                <span className="status-badge indexed">
-                  {semanticTypeLabels[semanticTypeOfNode(selectedNode)] ?? semanticTypeOfNode(selectedNode)}
-                </span>
-                <h4>{selectedNode.label}</h4>
-                <dl className="definition-list graph-definition-list">
-                  <div>
-                    <dt>所属空间</dt>
-                    <dd>{workspaceLabel}</dd>
-                  </div>
-                  <div>
-                    <dt>权重 / 置信度</dt>
-                    <dd>
-                      {selectedNode.weight ?? 1}
-                      {selectedNode.properties?.confidence ? ` / ${selectedNode.properties.confidence}` : ''}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>来源文件</dt>
-                    <dd>{selectedFilename}</dd>
-                  </div>
-                  <div>
-                    <dt>命中字段</dt>
-                    <dd>{selectedNode.properties?.match_field ? String(selectedNode.properties.match_field) : '当前视图'}</dd>
-                  </div>
-                </dl>
-                {selectedNode.properties?.content_preview && (
-                  <div className="graph-evidence-box">
-                    <strong>证据片段</strong>
-                    <p>{String(selectedNode.properties.content_preview)}</p>
-                  </div>
-                )}
-                <div className="graph-neighbor-list">
-                  <strong>相邻关系</strong>
-                  {selectedRelations.length === 0 ? (
-                    <span className="graph-muted">暂无相邻关系。</span>
-                  ) : (
-                    selectedRelations.map((edge) => (
-                      <button type="button" key={edge.id} onClick={() => setQuery(edge.label)}>
-                        <i style={{ backgroundColor: colorForRelation(edge.label) }} />
-                        <span>{edge.label}</span>
-                        <small>
-                          {edge.source === selectedNode.id ? '出边' : '入边'} · {Number(edge.properties?.occurrences ?? 1)} 次
-                        </small>
-                      </button>
-                    ))
-                  )}
-                </div>
-                <div className="graph-property-list">
-                  {Object.entries(selectedNode.properties ?? {})
-                    .filter(([key]) => !['content_preview'].includes(key))
-                    .slice(0, 10)
-                    .map(([key, value]) => (
-                      <span key={key}>
-                        <strong>{key}</strong>
-                        {String(value)}
-                      </span>
-                    ))}
-                </div>
-                <div className="graph-inspector-actions">
-                  {selectedDocumentId && (
-                    <button type="button" onClick={() => onOpenDocument(selectedDocumentId)}>
-                      <FileText size={16} aria-hidden="true" />
-                      打开来源文档
-                    </button>
-                  )}
-                  <button type="button" onClick={() => performPrimaryNodeAction(selectedNode)}>
-                    <Eye size={16} aria-hidden="true" />
-                    基于实体检索
-                  </button>
-                  <button type="button" onClick={onOpenQuestion}>
-                    <Sparkles size={16} aria-hidden="true" />
-                    进入问答
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="graph-empty-inspector">
-                <MousePointer2 size={34} aria-hidden="true" />
-                <strong>选择一个节点查看详情</strong>
-                <span>节点、关系和证据均来自当前知识库文档，不写入问答记录节点。</span>
-              </div>
-            )}
-          </aside>
+          <GraphInspectorDrawer
+            ref={rightPanelRef}
+            visible={rightPanelVisible}
+            node={selectedNode}
+            nodeById={new Map(nodes.map((node) => [node.id, node]))}
+            relations={selectedRelations}
+            workspaceLabel={workspaceLabel}
+            loading={nodeDetailLoading}
+            error={nodeDetailError}
+            getNodeType={semanticTypeOfNode}
+            getTypeLabel={(type) => semanticTypeLabels[type] ?? type}
+            getRelationColor={colorForRelation}
+            onClose={() => setRightPanelVisible(false)}
+            onClear={() => setSelectedNode(null)}
+            onSelectNode={activateNode}
+            onOpenDocument={onOpenDocument}
+            onSearchKnowledge={onSearchKnowledge}
+            onOpenQuestion={onOpenQuestion}
+          />
           )}
         </div>
       </div>
@@ -1225,7 +997,6 @@ function Graph2D({
       role="img"
       aria-label="2D 知识图谱"
       onWheel={(event) => {
-        if (!event.ctrlKey) return;
         event.preventDefault();
         event.stopPropagation();
         const nextZoom = Math.min(1.8, Math.max(0.55, zoom + (event.deltaY > 0 ? -0.08 : 0.08)));
@@ -1393,7 +1164,7 @@ function Graph2D({
                 onDragStart(node.id);
               }}
             >
-              <circle className="graph-node-hit-area" r={radius + 10} />
+              <circle className="graph-node-hit-area" r={Math.max(radius + 10, 30)} />
               <circle className="graph-node-selection-ring" r={radius + 8} fill="none" />
               <circle className="graph-node-halo" r={radius + 5} fill={colorForType(type)} />
               <circle className="graph-node-core" r={radius} fill={colorForType(type)} />
@@ -1589,7 +1360,8 @@ function edgeControlPoint(source: { x: number; y: number }, target: { x: number;
 
 function nodeRadius(node: KnowledgeGraphNode) {
   const weight = Math.max(1, Math.min(node.weight ?? 1, 100));
-  return Math.min(30, 11 + Math.sqrt(weight) * 1.75);
+  const normalized = (weight - 1) / 99;
+  return 18 + Math.sqrt(normalized) * 24;
 }
 
 function trimLabel(text: string, maxLength = 18) {

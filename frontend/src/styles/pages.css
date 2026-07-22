@@ -7764,14 +7764,3 @@ p {
     grid-column: auto;
   }
 }
-
-/* Keep the graph canvas dark after legacy responsive graph rules. */
-.neo4j-workbench .graph-stage {
-  background: #070b10 !important;
-  box-shadow: inset 0 1px 0 rgba(148, 180, 194, 0.05) !important;
-}
-
-.neo4j-workbench .graph-node-caption {
-  fill: #7e96a4;
-  stroke: #070b10;
-}
