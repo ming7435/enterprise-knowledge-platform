@@ -6727,6 +6727,66 @@ p {
   outline: 3px solid rgba(21, 94, 239, 0.12);
 }
 
+.personal-chunk-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.personal-chunk-card {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--surface);
+}
+
+.personal-chunk-card header,
+.personal-chunk-card > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.personal-chunk-card header {
+  justify-content: space-between;
+}
+
+.personal-chunk-card header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.personal-chunk-card header strong,
+.personal-chunk-card header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.personal-chunk-card header span,
+.personal-chunk-card p {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.personal-chunk-card p {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
 .personal-processing-progress {
   display: grid;
   gap: var(--space-2);

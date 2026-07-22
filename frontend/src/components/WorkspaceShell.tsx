@@ -85,18 +85,20 @@ const MEMBER_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const personalNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
   { key: 'dashboard', label: '工作台', icon: Home },
+  { key: 'documents', label: '文档管理', icon: FileText },
   { key: 'knowledge', label: '知识库', icon: Workflow },
   { key: 'chat', label: '智能问答', icon: Bot },
-  { key: 'advanced', label: '知识图谱', icon: BarChart3 },
-  { key: 'settings', label: '个人设置', icon: Settings }
+  { key: 'settings', label: '个人设置', icon: Settings },
+  { key: 'advanced', label: '高级驾驶舱', icon: BarChart3 }
 ];
 
 const enterpriseNav: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
   { key: 'dashboard', label: '工作台', icon: Home },
+  { key: 'documents', label: '文档管理', icon: FileText },
   { key: 'knowledge', label: '知识库', icon: Workflow },
   { key: 'chat', label: '智能问答', icon: Bot },
-  { key: 'advanced', label: '知识图谱', icon: BarChart3 },
   { key: 'settings', label: '企业设置', icon: Settings },
+  { key: 'advanced', label: '高级驾驶舱', icon: BarChart3 },
   { key: 'members', label: '成员与权限', icon: Users },
   { key: 'audit', label: '审计', icon: ShieldCheck }
 ];
